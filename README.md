@@ -7,6 +7,8 @@
 
 # OpenDisputes
 
+[![Deploy with Clawnify](https://app.clawnify.com/deploy-button.svg)](https://app.clawnify.com/deploy?repo=clawnify/OpenDisputes)
+
 Chargeback evidence for Stripe and Shopify, assembled from your own records.
 
 An open-source app template provided by [Clawnify.com](https://clawnify.com).
@@ -50,8 +52,6 @@ delivery actually changes outcomes on your own traffic. Small samples are shown
 as `1/3`, not as `33%`.
 
 ## Deploy
-
-[![Deploy with Clawnify](https://app.clawnify.com/deploy/badge.svg)](https://app.clawnify.com/deploy?repo=clawnify/OpenDisputes)
 
 Or run it yourself:
 
