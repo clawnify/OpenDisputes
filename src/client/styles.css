@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Tokens from the Clawnify Apps design system. Components name the token,
+   never a literal — an org rebrands by overriding these and nothing else. */
+@theme {
+  --color-background: #ffffff;
+  --color-surface: #ffffff;
+  --color-sunken: #f1f5f9;
+  --color-foreground: #1a202c;
+  --color-muted: #475569;
+  --color-faint: #94a3b8;
+  --color-border: #e2e8f0;
+  --color-ring: #2563eb;
+  --color-primary: #dd5164;
+  --color-primary-hover: #c53a4e;
+  --color-on-primary: #ffffff;
+  --color-success: #047857;
+  --color-success-tint: #ecfdf5;
+  --color-warning: #b45309;
+  --color-warning-tint: #fffbeb;
+  --color-danger: #b91c1c;
+  --color-danger-tint: #fef2f2;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-background: #0d1117;
+    --color-surface: #161b22;
+    --color-sunken: #1c2128;
+    --color-foreground: #e6edf3;
+    --color-muted: #9ba7b3;
+    --color-faint: #6e7681;
+    --color-border: #30363d;
+    --color-ring: #4493f8;
+    --color-success: #3fb950;
+    --color-success-tint: #12261e;
+    --color-warning: #d29922;
+    --color-warning-tint: #2a2210;
+    --color-danger: #f85149;
+    --color-danger-tint: #2d1518;
+  }
+}
+
+html { color-scheme: light dark; }
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers are instrumentation: tabular figures so digits and totals stack. */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "cv01" 1; }
+
+/* The signature move — every zone opens with one of these. */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Links are ink; the underline is the affordance. Blue is for focus rings. */
+a { color: var(--color-foreground); text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 0.125rem; }
+
+:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 1px; }
