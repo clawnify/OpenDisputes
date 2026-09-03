@@ -185,6 +185,41 @@ create table if not exists carrier_lookups (
 
 create index if not exists idx_carrier_dispute on carrier_lookups (dispute_id, created_at);
 
+-- Captured policy pages, kept as a history rather than a current value.
+--
+-- The reason this is a log and not two columns: a dispute asks what the
+-- customer was shown when they bought, and a merchant who tightened their
+-- returns window in June cannot prove March's terms with June's page. Evidence
+-- selects the snapshot in force on the service date, so an honest answer stays
+-- available after the policy moves.
+--
+-- Rows are written only when the text actually changes (`content_hash`), so a
+-- daily check costs one row per real edit rather than one per day.
+create table if not exists policy_snapshots (
+  id            text primary key,
+
+  kind          text not null check (kind in ('refund_policy', 'cancellation_policy', 'terms')),
+  url           text not null,
+
+  -- Readable text, kept inline because it is what goes into the evidence
+  -- fields; the rendered page is kept alongside it for the dossier.
+  content       text not null default '',
+  content_hash  text not null,
+  file_key      text not null default '',
+
+  -- How it was obtained. A page behind a bot wall is fetched by the agent's
+  -- browser instead, and an issuer weighs those the same, but the merchant
+  -- should be able to see which happened.
+  channel       text not null check (channel in ('fetch', 'agent_browser')),
+
+  captured_at   text not null default (datetime('now')),
+  -- Set when a later snapshot supersedes this one, so "in force on date X" is
+  -- a range lookup rather than a guess.
+  superseded_at text
+);
+
+create index if not exists idx_policy_kind on policy_snapshots (kind, captured_at desc);
+
 -- Single-row settings. Policy text lives here because it is merchant-specific
 -- prose that belongs in every submission and nobody wants to retype it.
 create table if not exists settings (
@@ -198,10 +233,16 @@ create table if not exists settings (
   -- their own outcome ledger justifies it. JSON array.
   auto_submit_reasons   text not null default '[]',
 
-  refund_policy_text        text not null default '',
-  cancellation_policy_text  text not null default '',
+  -- Policy pages are referenced by URL, not pasted as prose.
+  --
+  -- Pasted text says what the merchant believes their policy is. A dated
+  -- capture of the live page says what the customer was actually shown, which
+  -- is the thing an issuer is asking about. It is also self-maintaining: the
+  -- policy changes on the site and the evidence follows.
+  refund_policy_url         text not null default '',
+  cancellation_policy_url   text not null default '',
+  terms_url                 text not null default '',
   product_description_text  text not null default '',
-  policy_url                text not null default '',
 
   -- Which agent handles browser escalation, when the org runs more than one.
   agent_server_id       text not null default '',
