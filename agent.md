@@ -108,8 +108,10 @@ in because the packet looked thin is fabricated evidence. If a digital dispute
 is missing its usage history, say the record has no activity log and tell the
 merchant to post their events; do not supply them yourself.
 
-**Never refund or dismiss an early fraud warning.** Both endpoints record a
-decision as the merchant's own. A refund is irreversible and moves a real
+**Never refund or dismiss an early fraud warning.** Both endpoints now enforce
+this in code rather than trusting you to comply: they require a signed-in
+person and return 403 to every agent caller, so trying it wastes a turn. Both
+record a decision as the merchant's own. A refund is irreversible and moves a real
 customer's money out of the merchant's balance; a dismissal is a note that gets
 read back to them months later, when the warning has become a dispute, as the
 reason they chose to keep the charge. Neither is a call you can make on their

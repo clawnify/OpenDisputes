@@ -1,4 +1,4 @@
-import { createApp, createRoute, z } from "@clawnify/app";
+import { caller, createApp, createRoute, user, z } from "@clawnify/app";
 import { get, query, run } from "./db.js";
 import {
   addEvidence, buildRebuttal, gatherCarrierEvidence, loadDossier, refreshTriage, settings,
@@ -609,7 +609,7 @@ app.openapi(
     responses: {
       200: {
         description: "Synced",
-        content: { "application/json": { schema: z.object({ imported: z.number(), prepared: z.number(), warnings: z.number(), sources: z.array(z.string()) }) } },
+        content: { "application/json": { schema: z.object({ imported: z.number(), prepared: z.number(), warnings: z.number(), warnings_failed: z.number(), sources: z.array(z.string()) }) } },
       },
     },
   }),
@@ -637,6 +637,7 @@ app.openapi(
     // sitting in Stripe right now, and those are the ones with a decision still
     // available — unlike the disputes above, which are already lost or won.
     let warnings = 0;
+    let warningsFailed = 0;
     if (c.env.STRIPE_API_KEY) {
       let afterW: string | undefined;
       for (let pageNo = 0; pageNo < 10; pageNo++) {
@@ -645,8 +646,13 @@ app.openapi(
         } | null;
         if (!page?.data?.length) break;
         for (const w of page.data) {
-          await upsertWarning(c.env, w).catch(() => undefined);
-          warnings++;
+          // Count what landed, not what was attempted. This app already refuses
+          // to report an unverified submission as sent; a backfill that says
+          // "47 warnings" when the API key was wrong and none persisted is the
+          // same lie in a cheaper place.
+          const ok = await upsertWarning(c.env, w).then(() => true, () => false);
+          if (ok) warnings++;
+          else warningsFailed++;
         }
         if (!page.has_more) break;
         afterW = String(page.data[page.data.length - 1].id);
@@ -676,7 +682,7 @@ app.openapi(
       }
     }
 
-    return c.json({ imported: ids.length, prepared, warnings, sources }, 200);
+    return c.json({ imported: ids.length, prepared, warnings, warnings_failed: warningsFailed, sources }, 200);
   },
 );
 
@@ -789,12 +795,34 @@ app.openapi(
     responses: {
       200: { description: "Refunded", content: { "application/json": { schema: WarningSchema } } },
       400: { description: "Not refundable", content: { "application/json": { schema: ErrorSchema } } },
+      403: { description: "Not a person", content: { "application/json": { schema: ErrorSchema } } },
       404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     },
   }),
   async (c) => {
     const { id } = c.req.valid("param");
     const { note, mark_fraudulent } = c.req.valid("json");
+
+    // Enforced here, not only in agent.md. A refund moves a real customer's
+    // money and cannot be undone, so "a person asked for this" has to be a
+    // check the code makes rather than an instruction a model can be talked
+    // out of. `user()` is null for every non-human caller the platform
+    // defines (agent, agent-browser, app, system, public, bypass), and
+    // `caller()` falls back to "public" when the header is absent, so this
+    // fails closed off-platform too.
+    const person = user(c);
+    if (!person) {
+      return c.json(
+        {
+          error:
+            `Refunds are people-only, and this request came from "${caller(c)}". ` +
+            `Open the app as a signed-in user and press the button there. ` +
+            `Running locally, there is no platform identity, so this always refuses.`,
+        },
+        403,
+      );
+    }
+
     const w = await get<FraudWarning>("select * from fraud_warnings where id = ?", [id]);
     if (!w) return c.json({ error: "no such warning" }, 404);
     if (w.resolution) return c.json({ error: `already resolved as ${w.resolution}` }, 400);
@@ -847,12 +875,24 @@ app.openapi(
     responses: {
       200: { description: "Dismissed", content: { "application/json": { schema: WarningSchema } } },
       400: { description: "Already resolved", content: { "application/json": { schema: ErrorSchema } } },
+      403: { description: "Not a person", content: { "application/json": { schema: ErrorSchema } } },
       404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     },
   }),
   async (c) => {
     const { id } = c.req.valid("param");
     const { note } = c.req.valid("json");
+
+    // Same gate. This note is attributed to the merchant and read back to them
+    // when the warning becomes a dispute; an agent writing it forges the one
+    // record that makes the ledger worth keeping.
+    if (!user(c)) {
+      return c.json(
+        { error: `Recording a decision is people-only, and this request came from "${caller(c)}".` },
+        403,
+      );
+    }
+
     const w = await get<FraudWarning>("select * from fraud_warnings where id = ?", [id]);
     if (!w) return c.json({ error: "no such warning" }, 404);
     if (w.resolution) return c.json({ error: `already resolved as ${w.resolution}` }, 400);
