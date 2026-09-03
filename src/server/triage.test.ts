@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldAutoSubmit, triage, type CarrierSignal } from "./triage.js";
+import { DEFAULT_COUNTER_FEE_CENTS, shouldAutoSubmit, triage, type CarrierSignal } from "./triage.js";
 import type { Dispute, EvidenceItem, EvidenceKind } from "./types.js";
 
 function dispute(over: Partial<Dispute> = {}): Dispute {
@@ -105,21 +105,47 @@ describe("triage — weak fraud claims", () => {
 });
 
 describe("triage — economics", () => {
-  it("ignores amount when the processor charges nothing to respond", () => {
-    // The correction that matters: with no counter fee, accepting and losing
-    // cost the same, so a small dispute is still worth contesting.
+  // Two fees, and only one of them is a decision input. The received fee is
+  // charged when the dispute is raised and never returned, so it is sunk. The
+  // counter fee is spent only by choosing to fight.
+
+  it("declines a dispute smaller than the cost of contesting it", () => {
     const t = triage({ dispute: dispute({ amount_cents: 300 }), items: [], carrier: [pod()] });
+    expect(t.recommendation).toBe("do_not_fight");
+    expect(t.reason).toMatch(/does not repay/i);
+  });
+
+  it("applies a real default rather than assuming contesting is free", () => {
+    // The bug this pins: defaulting the fee to zero made every small dispute
+    // look worth fighting, which is how a merchant loses money winning.
+    expect(DEFAULT_COUNTER_FEE_CENTS).toBeGreaterThan(0);
+    const t = triage({ dispute: dispute({ amount_cents: 500 }), items: [], carrier: [pod()] });
+    expect(t.recommendation).toBe("do_not_fight");
+  });
+
+  it("fights once the amount clears the fee", () => {
+    const t = triage({ dispute: dispute({ amount_cents: 12_000 }), items: [], carrier: [pod()] });
     expect(t.recommendation).toBe("fight");
   });
 
-  it("declines only when a real counter fee exceeds the amount", () => {
+  it("lets a merchant who pays nothing to counter say so", () => {
     const t = triage({
-      dispute: dispute({ amount_cents: 1_500 }),
+      dispute: dispute({ amount_cents: 300 }),
       items: [],
       carrier: [pod()],
-      counterFeeCents: 2_000,
+      counterFeeCents: 0,
     });
-    expect(t.recommendation).toBe("do_not_fight");
+    expect(t.recommendation).toBe("fight");
+  });
+
+  it("never lets economics override a case the evidence concedes", () => {
+    // A large amount does not make an unwinnable case winnable.
+    const t = triage({
+      dispute: dispute({ amount_cents: 500_000 }),
+      items: [],
+      carrier: [pod({ address_match: 0, detail: "delivered to 90210, order shipped to 10001" })],
+    });
+    expect(t.recommendation).toBe("accept");
   });
 });
 
