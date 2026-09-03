@@ -279,3 +279,77 @@ create table if not exists settings (
 );
 
 insert or ignore into settings (id) values (1);
+
+-- Early fraud warnings: the dispute that has not happened yet.
+--
+-- Separate from `disputes` on purpose, and the temptation to merge them is
+-- worth naming. A warning is not an early dispute — it is a different object
+-- with a different decision attached. A dispute asks "can I win this?"; a
+-- warning asks "should this charge survive at all?", and the honest answer
+-- sometimes costs the merchant the sale. Folding warnings into the disputes
+-- table would put a row in front of the merchant with a Fight button on a
+-- charge nobody has fought yet.
+--
+-- The pairing matters more than either row alone. `dispute_id` is filled in
+-- when a warning we chose not to refund turns into a real dispute, which is
+-- the only way a merchant ever learns whether their own judgement was good.
+create table if not exists fraud_warnings (
+  id             text primary key,
+
+  processor      text not null default 'stripe' check (processor in ('stripe')),
+  external_id    text not null,
+  charge_ref     text not null default '',
+
+  -- The issuer's own fraud label, verbatim. Stripe's enum, not ours: there is
+  -- no second processor to normalize against yet, and inventing a neutral
+  -- vocabulary for one source would be indirection with nothing on the far side.
+  fraud_type     text not null default 'misc',
+
+  -- Stripe's definition: not yet disputed and not yet fully refunded. It is the
+  -- flag that decides whether a decision is still available, so it is refreshed
+  -- on every re-read rather than frozen at intake.
+  actionable     integer not null default 1,
+
+  amount_cents   integer not null default 0,
+  currency       text not null default 'usd',
+  customer_email text not null default '',
+  customer_name  text not null default '',
+  is_physical    integer not null default 0,
+
+  -- Verbatim `three_d_secure.result` off the charge, empty when 3DS never ran.
+  -- Stored raw because "does this shift liability" is a reading of it, and the
+  -- next person should be able to check the reading against the source value.
+  three_d_secure_result text not null default '',
+
+  -- What the record said about recoverability when we last looked. See
+  -- fraud-warnings.ts: this is the axis Stripe's own guidance turns on.
+  fulfillment_state text not null default 'unknown',
+
+  recommendation text not null default 'review'
+                 check (recommendation in ('refund', 'do_not_refund', 'review', 'no_action')),
+  recommendation_reason text not null default '',
+  factors        text not null default '[]',
+
+  -- What the merchant actually did, and when. Null while undecided.
+  resolution     text check (resolution in ('refunded', 'dismissed', 'became_dispute')),
+  resolution_at  text,
+  -- Why they dismissed it. Free text, because the interesting reasons are the
+  -- ones no enum anticipated, and this column is the ledger's whole value.
+  resolution_note text not null default '',
+  refund_id      text not null default '',
+
+  -- Filled when this warning became a real dispute. The feedback loop: a
+  -- merchant can finally ask what share of the warnings they let ride came
+  -- back as chargebacks.
+  dispute_id     text references disputes (id) on delete set null,
+
+  warned_at      text not null,
+  raw            text not null default '{}',
+  created_at     text not null default (datetime('now')),
+  updated_at     text not null default (datetime('now')),
+
+  unique (processor, external_id)
+);
+
+create index if not exists idx_warnings_open on fraud_warnings (resolution, warned_at);
+create index if not exists idx_warnings_charge on fraud_warnings (charge_ref);

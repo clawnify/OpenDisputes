@@ -40,6 +40,19 @@ scans are not reliably available by API at all. Those cases are handed to your
 Clawnify agent, which signs into the carrier portal with a real browser and
 retrieves the document. Every item is tagged with how it was obtained.
 
+**Catches the dispute before it exists.** When an issuer flags a payment as
+probably fraudulent, Stripe passes on an early fraud warning, and for a short
+window you can still refund and avoid the chargeback entirely. Whether you
+should is the question, and Stripe's own guidance turns on one thing: is the
+product still recoverable? An unshipped order is worth refunding; a parcel the
+carrier already delivered is not, because refunding loses the goods as well as
+the money. That is exactly the question this app already answers, from the
+carrier record and your activity feed, and it is the reason the decision belongs
+next to your evidence rather than in a dashboard. Two things it will not tell
+you, because both are false: that refunding retracts the warning (the card
+networks count it either way), and that a partial refund is a safe middle
+ground (a partially refunded payment can still be disputed for its full value).
+
 **Tells you which disputes not to fight.** A parcel delivered to an address that
 does not match the order argues for the cardholder. So does a not-received claim
 with no delivery record, and a subscription that kept billing after a
@@ -76,8 +89,12 @@ pnpm seed                         # optional demo data
 **Stripe.** Create a restricted API key with read on charges, invoices and
 customers, and write on disputes and files. Add a webhook endpoint pointing at
 `/api/webhooks/stripe` subscribed to `charge.dispute.created`,
-`charge.dispute.updated` and `charge.dispute.closed`, and put its signing secret
-in `STRIPE_WEBHOOK_SECRET`. Unsigned requests are refused.
+`charge.dispute.updated`, `charge.dispute.closed`,
+`radar.early_fraud_warning.created` and `radar.early_fraud_warning.updated`, and
+put its signing secret in `STRIPE_WEBHOOK_SECRET`. Unsigned requests are refused.
+Leave the two `radar.` events off and everything still works, minus the one
+window where a chargeback is still avoidable. Refunding needs write on refunds
+in the restricted key; without it the rest of the app is unaffected.
 
 **Shopify.** Create a custom app with `read_orders`, `read_fulfillments`,
 `read_shopify_payments_disputes` and `write_shopify_payments_dispute_evidences`.
@@ -138,11 +155,15 @@ the app retrieves and stores the letter and never the bare signature.
 ## What it deliberately does not do
 
 - **No chargeback alerts.** Deflection networks are a paid subscription to a
-  card-network feed, not something software can synthesise.
+  card-network feed, not something software can synthesise. Early fraud
+  warnings are a different thing and are handled: they come through Stripe at
+  no extra cost, and the app scores and shows them.
 - **No guarantee.** Products that reimburse you still leave the chargeback
   counting against your ratio. Know which one you are buying.
-- **No auto-refunding.** Refunding every alert to keep a dispute rate down is
-  a decision about your revenue, not a default worth shipping.
+- **No auto-refunding.** Refunding every warning to keep a dispute rate down is
+  a decision about your revenue, not a default worth shipping. The app
+  recommends and records; pressing the button is yours, and your agent is not
+  allowed to press it either.
 
 ## Licence
 

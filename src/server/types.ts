@@ -143,3 +143,50 @@ export interface CustomerActivity {
   metadata: string;
   created_at: string;
 }
+
+/**
+ * An early fraud warning: the issuer flagging a payment as probably fraudulent
+ * before any chargeback exists. See fraud-warnings.ts for why this is its own
+ * object rather than an early dispute.
+ */
+export interface FraudWarning {
+  id: string;
+  processor: "stripe";
+  external_id: string;
+  charge_ref: string;
+  /** Stripe's issuer label, verbatim. */
+  fraud_type: string;
+  /** Stripe: not yet disputed and not yet fully refunded. */
+  actionable: number;
+  amount_cents: number;
+  currency: string;
+  customer_email: string;
+  customer_name: string;
+  is_physical: number;
+  /** Verbatim `three_d_secure.result` from the charge; empty when 3DS never ran. */
+  three_d_secure_result: string;
+  fulfillment_state: string;
+  recommendation: "refund" | "do_not_refund" | "review" | "no_action";
+  recommendation_reason: string;
+  factors: string;
+  resolution: "refunded" | "dismissed" | "became_dispute" | null;
+  resolution_at: string | null;
+  resolution_note: string;
+  refund_id: string;
+  dispute_id: string | null;
+  warned_at: string;
+  raw: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Stripe's `fraud_type` enum on the early fraud warning object. */
+export const FRAUD_TYPES = [
+  "card_never_received",
+  "fraudulent_card_application",
+  "made_with_counterfeit_card",
+  "made_with_lost_card",
+  "made_with_stolen_card",
+  "misc",
+  "unauthorized_use_of_card",
+] as const;

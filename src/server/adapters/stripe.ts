@@ -332,3 +332,49 @@ export async function verifyWebhook(
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
   return diff === 0;
 }
+
+// ── Early fraud warnings ────────────────────────────────────────────
+
+/**
+ * List early fraud warnings.
+ *
+ * Note what is NOT a parameter: `actionable`. Stripe's list endpoint filters
+ * only by `charge`, `payment_intent` and `created`, so the "is there still a
+ * decision to make" flag has to be read off each object rather than asked for.
+ * Filtering server-side and paging on the remainder would silently skip pages.
+ */
+export async function listEarlyFraudWarnings(env: StripeEnv, startingAfter?: string) {
+  const q = new URLSearchParams({ limit: "100" });
+  if (startingAfter) q.set("starting_after", startingAfter);
+  return call(env, `/radar/early_fraud_warnings?${q}`);
+}
+
+/**
+ * Refund a charge in full.
+ *
+ * Full-amount only, and that is a correctness constraint rather than a
+ * simplification. Stripe: "customers can't dispute fully refunded payments,
+ * [but] they can still dispute partially refunded payments. Card network rules
+ * even allow for a payment that has been partially refunded to be disputed for
+ * the full payment amount." A partial refund therefore buys no protection at
+ * all while still costing money, so no `amount` is ever sent.
+ *
+ * `reason: "fraudulent"` is opt-in because it is not merely a label: Stripe
+ * "will add the associated card and email to your block lists". That is
+ * usually what a merchant wants for a confirmed-fraud EFW and occasionally
+ * very much not, so the caller decides and the UI says what it does.
+ */
+export async function refundCharge(
+  env: StripeEnv,
+  chargeId: string,
+  opts: { markFraudulent: boolean; metadata?: Record<string, string> },
+): Promise<Record<string, unknown>> {
+  return call(env, "/refunds", {
+    method: "POST",
+    body: {
+      charge: chargeId,
+      ...(opts.markFraudulent ? { reason: "fraudulent" } : {}),
+      ...(opts.metadata ? { metadata: opts.metadata } : {}),
+    },
+  });
+}

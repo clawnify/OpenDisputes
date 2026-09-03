@@ -33,6 +33,23 @@ export interface CarrierLookup {
   address_match: number | null; detail: string;
 }
 
+export interface FraudWarning {
+  id: string; external_id: string; charge_ref: string;
+  fraud_type: string; fraud_type_label: string; actionable: number;
+  amount_cents: number; currency: string;
+  customer_email: string; customer_name: string; is_physical: number;
+  three_d_secure_result: string; fulfillment_state: string;
+  recommendation: string; recommendation_reason: string; factors: string[];
+  resolution: string | null; resolution_at: string | null;
+  resolution_note: string; refund_id: string; dispute_id: string | null;
+  warned_at: string;
+}
+
+export interface WarningLedger {
+  open: number; refunded: number; dismissed: number;
+  became_dispute: number; dismissed_then_disputed: number;
+}
+
 export const api = {
   disputes: (q: Record<string, string> = {}) =>
     req<{ disputes: Dispute[]; total: number }>(`/api/disputes?${new URLSearchParams(q)}`),
@@ -52,6 +69,21 @@ export const api = {
     }>(`/api/disputes/${id}/submit`, {
       method: "POST",
       body: JSON.stringify({ submit, override_recommendation: override }),
+    }),
+
+  warnings: (openOnly = false) =>
+    req<{ warnings: FraudWarning[]; ledger: WarningLedger }>(
+      `/api/fraud-warnings${openOnly ? "?open=true" : ""}`,
+    ),
+
+  refundWarning: (id: string, note: string, markFraudulent: boolean) =>
+    req<FraudWarning>(`/api/fraud-warnings/${id}/refund`, {
+      method: "POST", body: JSON.stringify({ note, mark_fraudulent: markFraudulent }),
+    }),
+
+  dismissWarning: (id: string, note: string) =>
+    req<FraudWarning>(`/api/fraud-warnings/${id}/dismiss`, {
+      method: "POST", body: JSON.stringify({ note }),
     }),
 
   toggleEvidence: (id: string, included: boolean) =>

@@ -5,13 +5,16 @@ import {
   type DossierEnv,
 } from "./dossier.js";
 import { attachActivityEvidence, ingestActivity } from "./activity.js";
+import {
+  fraudTypeLabel, linkWarningToDispute, upsertWarning, warningLedger,
+} from "./fraud-warnings.js";
 import { shouldAutoSubmit } from "./triage.js";
 import { dossierHTML, renderDossier } from "./render.js";
 import { dispatchTask, listAgentServers, shopifySubmitBrief } from "./agent.js";
 import { CARRIERS, matchAddress } from "./carriers/index.js";
 import * as stripe from "./adapters/stripe.js";
 import * as shopify from "./adapters/shopify.js";
-import { normalizeReason, type Dispute, type EvidenceItem } from "./types.js";
+import { normalizeReason, type Dispute, type EvidenceItem, type FraudWarning } from "./types.js";
 
 type Env = {
   Bindings: DossierEnv & {
@@ -549,11 +552,25 @@ app.post("/api/webhooks/stripe", async (c) => {
   }
 
   const event = JSON.parse(payload) as { type: string; data: { object: Record<string, unknown> } };
+
+  // Early fraud warnings arrive on their own event family and are a different
+  // object with a different decision attached — see fraud-warnings.ts. They are
+  // handled before the dispute filter, which would otherwise drop them.
+  if (event.type?.startsWith("radar.early_fraud_warning.")) {
+    await upsertWarning(c.env, event.data.object);
+    return c.json({ ok: true });
+  }
+
   if (!event.type?.startsWith("charge.dispute.")) return c.json({ ok: true });
 
   const id = await upsertStripeDispute(c.env, event.data.object);
 
   if (event.type === "charge.dispute.created") {
+    // The warning, if there was one, has now cost the merchant. Recording that
+    // here is the only way they ever learn whether letting it ride was right.
+    const charge = typeof event.data.object.charge === "string" ? event.data.object.charge : "";
+    await linkWarningToDispute(charge, id);
+
     // Prepare immediately. The deadline starts now, and the merchant should
     // find a scored dossier waiting rather than an empty row.
     await preparePipeline(c.env, id);
@@ -592,7 +609,7 @@ app.openapi(
     responses: {
       200: {
         description: "Synced",
-        content: { "application/json": { schema: z.object({ imported: z.number(), prepared: z.number(), sources: z.array(z.string()) }) } },
+        content: { "application/json": { schema: z.object({ imported: z.number(), prepared: z.number(), warnings: z.number(), sources: z.array(z.string()) }) } },
       },
     },
   }),
@@ -613,6 +630,26 @@ app.openapi(
         for (const dd of page.data ?? []) ids.push(await upsertStripeDispute(c.env, dd));
         if (!page.has_more || !page.data?.length) break;
         after = String(page.data[page.data.length - 1].id);
+      }
+    }
+
+    // Warnings too. A merchant turning this on mid-life has actionable warnings
+    // sitting in Stripe right now, and those are the ones with a decision still
+    // available — unlike the disputes above, which are already lost or won.
+    let warnings = 0;
+    if (c.env.STRIPE_API_KEY) {
+      let afterW: string | undefined;
+      for (let pageNo = 0; pageNo < 10; pageNo++) {
+        const page = (await stripe.listEarlyFraudWarnings(c.env, afterW).catch(() => null)) as {
+          data?: Array<Record<string, unknown>>; has_more?: boolean;
+        } | null;
+        if (!page?.data?.length) break;
+        for (const w of page.data) {
+          await upsertWarning(c.env, w).catch(() => undefined);
+          warnings++;
+        }
+        if (!page.has_more) break;
+        afterW = String(page.data[page.data.length - 1].id);
       }
     }
 
@@ -639,7 +676,196 @@ app.openapi(
       }
     }
 
-    return c.json({ imported: ids.length, prepared, sources }, 200);
+    return c.json({ imported: ids.length, prepared, warnings, sources }, 200);
+  },
+);
+
+// ── Early fraud warnings ────────────────────────────────────────────
+//
+// The deflection surface. Everything here is human-initiated on purpose: a
+// refund moves a customer's money and cannot be undone, so there is no
+// auto-refund path, no reason code that promotes one, and nothing the agent can
+// call. Auto-submitting a dossier can be wrong and re-argued; an automatic
+// refund of a legitimate order is just gone.
+
+const WarningSchema = z
+  .object({
+    id: z.string(), external_id: z.string(), charge_ref: z.string(),
+    fraud_type: z.string(), fraud_type_label: z.string(), actionable: z.number(),
+    amount_cents: z.number(), currency: z.string(),
+    customer_email: z.string(), customer_name: z.string(), is_physical: z.number(),
+    three_d_secure_result: z.string(), fulfillment_state: z.string(),
+    recommendation: z.string(), recommendation_reason: z.string(),
+    factors: z.array(z.string()),
+    resolution: z.string().nullable(), resolution_at: z.string().nullable(),
+    resolution_note: z.string(), refund_id: z.string(), dispute_id: z.string().nullable(),
+    warned_at: z.string(),
+  })
+  .openapi("FraudWarning");
+
+function presentWarning(w: FraudWarning) {
+  let factors: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(w.factors || "[]");
+    factors = Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    factors = [];
+  }
+  return {
+    id: w.id, external_id: w.external_id, charge_ref: w.charge_ref,
+    fraud_type: w.fraud_type, fraud_type_label: fraudTypeLabel(w.fraud_type),
+    actionable: w.actionable, amount_cents: w.amount_cents, currency: w.currency,
+    customer_email: w.customer_email, customer_name: w.customer_name,
+    is_physical: w.is_physical, three_d_secure_result: w.three_d_secure_result,
+    fulfillment_state: w.fulfillment_state,
+    recommendation: w.recommendation, recommendation_reason: w.recommendation_reason,
+    factors,
+    resolution: w.resolution, resolution_at: w.resolution_at,
+    resolution_note: w.resolution_note, refund_id: w.refund_id,
+    dispute_id: w.dispute_id, warned_at: w.warned_at,
+  };
+}
+
+app.openapi(
+  createRoute({
+    method: "get", path: "/api/fraud-warnings",
+    summary: "Payments the issuer flagged before any dispute exists",
+    description:
+      "Early fraud warnings, scored by whether the product is still recoverable — which is the test Stripe's own guidance turns on, and the one Stripe cannot apply for you because it does not know whether your parcel was delivered or your app was used. The ledger counts how many warnings you let ride and how many came back as disputes.",
+    request: {
+      query: z.object({
+        open: z.enum(["true", "false"]).optional().describe("Only warnings with no decision recorded yet."),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Warnings",
+        content: {
+          "application/json": {
+            schema: z.object({
+              warnings: z.array(WarningSchema),
+              ledger: z.object({
+                open: z.number(), refunded: z.number(), dismissed: z.number(),
+                became_dispute: z.number(), dismissed_then_disputed: z.number(),
+              }),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  async (c) => {
+    const openOnly = c.req.valid("query").open === "true";
+    const rows = await query<FraudWarning>(
+      `select * from fraud_warnings ${openOnly ? "where resolution is null" : ""}
+        order by warned_at desc limit 200`,
+      [],
+    );
+    return c.json({ warnings: rows.map(presentWarning), ledger: await warningLedger() }, 200);
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: "post", path: "/api/fraud-warnings/{id}/refund",
+    summary: "Refund the charge in full to deflect the dispute",
+    description:
+      "Refunds the whole charge. Full amount only, and not as a simplification: card network rules let a partially refunded payment be disputed for its full value, so a partial refund costs money and buys no protection. This does not retract the warning — Visa counts it toward VAMP either way — it avoids the dispute and its fee. Irreversible, and never triggered automatically.",
+    request: {
+      params: z.object({ id: z.string() }),
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              note: z.string().default("").describe("Why you decided to refund. Kept for the ledger."),
+              mark_fraudulent: z.boolean().default(false).describe(
+                "Send Stripe reason=fraudulent, which also adds this card and email to your Radar block lists.",
+              ),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: { description: "Refunded", content: { "application/json": { schema: WarningSchema } } },
+      400: { description: "Not refundable", content: { "application/json": { schema: ErrorSchema } } },
+      404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { note, mark_fraudulent } = c.req.valid("json");
+    const w = await get<FraudWarning>("select * from fraud_warnings where id = ?", [id]);
+    if (!w) return c.json({ error: "no such warning" }, 404);
+    if (w.resolution) return c.json({ error: `already resolved as ${w.resolution}` }, 400);
+    if (!w.actionable) {
+      return c.json({ error: "Stripe no longer lists this warning as actionable; the charge is already refunded or already disputed" }, 400);
+    }
+    if (!w.charge_ref) return c.json({ error: "no charge on this warning to refund" }, 400);
+
+    let refundId = "";
+    try {
+      const refund = await stripe.refundCharge(c.env, w.charge_ref, {
+        markFraudulent: mark_fraudulent,
+        metadata: { open_disputes_warning: w.external_id },
+      });
+      refundId = String(refund.id ?? "");
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "refund failed" }, 400);
+    }
+
+    await run(
+      `update fraud_warnings
+          set resolution = 'refunded', resolution_at = datetime('now'),
+              resolution_note = ?, refund_id = ?, actionable = 0, updated_at = datetime('now')
+        where id = ?`,
+      [note, refundId, id],
+    );
+    const after = await get<FraudWarning>("select * from fraud_warnings where id = ?", [id]);
+    return c.json(presentWarning(after as FraudWarning), 200);
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: "post", path: "/api/fraud-warnings/{id}/dismiss",
+    summary: "Record a decision to keep the charge",
+    description:
+      "Keeps the money and accepts the risk. Nothing is sent anywhere — the point is the record: if this charge later becomes a dispute, the warning is linked to it and your reasoning is still attached. That pairing is the only feedback loop there is on whether your judgement about these is any good.",
+    request: {
+      params: z.object({ id: z.string() }),
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              note: z.string().min(1).describe("Why you are keeping it. Required — an unexplained dismissal teaches you nothing later."),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: { description: "Dismissed", content: { "application/json": { schema: WarningSchema } } },
+      400: { description: "Already resolved", content: { "application/json": { schema: ErrorSchema } } },
+      404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { note } = c.req.valid("json");
+    const w = await get<FraudWarning>("select * from fraud_warnings where id = ?", [id]);
+    if (!w) return c.json({ error: "no such warning" }, 404);
+    if (w.resolution) return c.json({ error: `already resolved as ${w.resolution}` }, 400);
+
+    await run(
+      `update fraud_warnings
+          set resolution = 'dismissed', resolution_at = datetime('now'),
+              resolution_note = ?, updated_at = datetime('now')
+        where id = ?`,
+      [note, id],
+    );
+    const after = await get<FraudWarning>("select * from fraud_warnings where id = ?", [id]);
+    return c.json(presentWarning(after as FraudWarning), 200);
   },
 );
 

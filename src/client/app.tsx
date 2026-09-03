@@ -1,11 +1,13 @@
 import { NavLink, Route, Routes } from "react-router-dom";
-import { BarChart3, Inbox, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
+import { BarChart3, Inbox, Settings as SettingsIcon, ShieldAlert, ShieldCheck } from "lucide-react";
 import { DisputeList } from "./components/dispute-list";
 import { DisputeDetail } from "./components/dispute-detail";
 import { SettingsPanel, StatsPanel } from "./components/settings-stats";
+import { WarningList } from "./components/warning-list";
 
 const NAV = [
   { to: "/", label: "Disputes", icon: Inbox, end: true },
+  { to: "/warnings", label: "Fraud warnings", icon: ShieldAlert, end: false },
   { to: "/performance", label: "Performance", icon: BarChart3, end: false },
   { to: "/settings", label: "Settings", icon: SettingsIcon, end: false },
 ];
@@ -50,6 +52,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DisputeList />} />
           <Route path="/disputes/:id" element={<DisputeDetail />} />
+          <Route path="/warnings" element={<WarningList />} />
           <Route path="/performance" element={<StatsPanel />} />
           <Route path="/settings" element={<SettingsPanel />} />
         </Routes>

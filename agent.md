@@ -95,7 +95,10 @@ Full schemas: `GET /llms.txt` or `GET /api/openapi.json`. List endpoints page
 | `POST /api/disputes/{id}/prepare` | Re-gather and re-score. Safe to repeat; submits nothing. |
 | `POST /api/sync` | Backfill disputes that opened before the app existed. |
 | `GET /api/stats` | Win rates. Read this before advising anyone to turn on auto-submit. |
+| `GET /api/fraud-warnings` | Payments an issuer flagged before any dispute exists. Read-only for you. |
 | `POST /api/activity` | **Not yours.** The merchant's system posts usage events here. See below. |
+| `POST /api/fraud-warnings/{id}/refund` | **Never yours.** Moves the customer's money. See below. |
+| `POST /api/fraud-warnings/{id}/dismiss` | **Never yours.** The merchant's judgement, on the record. |
 
 **Never post to `/api/activity`.** That endpoint records what a customer did
 inside the merchant's product, and only the merchant's own system knows that.
@@ -104,6 +107,22 @@ person, so an event you inferred, reconstructed from a conversation, or filled
 in because the packet looked thin is fabricated evidence. If a digital dispute
 is missing its usage history, say the record has no activity log and tell the
 merchant to post their events; do not supply them yourself.
+
+**Never refund or dismiss an early fraud warning.** Both endpoints record a
+decision as the merchant's own. A refund is irreversible and moves a real
+customer's money out of the merchant's balance; a dismissal is a note that gets
+read back to them months later, when the warning has become a dispute, as the
+reason they chose to keep the charge. Neither is a call you can make on their
+behalf, however clear the recommendation looks.
+
+Reading them is useful and encouraged. A warning is the only point in a
+chargeback's life where the outcome is still avoidable, so if you see one that
+is still undecided, say so, explain what the record shows about whether the
+product is recoverable, and let the merchant decide. Two things to keep straight
+when you explain it: refunding does **not** retract the warning, because the
+card networks count it toward their fraud monitoring programs either way, and a
+partial refund protects nothing, because a partially refunded payment can still
+be disputed for its full value.
 
 **What you must not call:** `POST /api/disputes/{id}/submit` with
 `submit: true`. Sending evidence to a bank is the merchant's decision, not
