@@ -55,7 +55,7 @@
   "template": {
     "displayName": "OpenDisputes",
     "category": "Finance",
-    "image": "https://raw.githubusercontent.com/clawnify/OpenDisputes/main/screenshot.jpg",
+    "image": "https://raw.githubusercontent.com/clawnify/OpenDisputes/main/readme-banner.png",
     "enabled": true
   },
   "agent": "agent.md"

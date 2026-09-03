@@ -1,4 +1,9 @@
-<img src="screenshot.jpg" alt="OpenDisputes — a dispute with proof of delivery retrieved from the carrier portal" width="100%">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./readme-banner-dark.png">
+    <img alt="OpenDisputes" src="./readme-banner.png">
+  </picture>
+</p>
 
 # OpenDisputes
 

@@ -29,8 +29,19 @@
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
+/* Dark mode.
+ *
+ * These are plain custom-property overrides on :root, NOT a second `@theme`
+ * block. Tailwind v4 hoists every `@theme` to :root and drops the wrapper, so
+ * `@media (prefers-color-scheme: dark) { @theme { … } }` compiles to an
+ * unconditional override: the dark palette wins everywhere and the light one
+ * never renders. The generated CSS contained no media query at all and set
+ * --color-background to the dark canvas outright.
+ *
+ * `@theme` above stays the single source of the token names. This block only
+ * re-points the values Tailwind already generated. */
 @media (prefers-color-scheme: dark) {
-  @theme {
+  :root {
     --color-background: #0d1117;
     --color-surface: #161b22;
     --color-sunken: #1c2128;
