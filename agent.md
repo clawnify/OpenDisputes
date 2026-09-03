@@ -95,6 +95,15 @@ Full schemas: `GET /llms.txt` or `GET /api/openapi.json`. List endpoints page
 | `POST /api/disputes/{id}/prepare` | Re-gather and re-score. Safe to repeat; submits nothing. |
 | `POST /api/sync` | Backfill disputes that opened before the app existed. |
 | `GET /api/stats` | Win rates. Read this before advising anyone to turn on auto-submit. |
+| `POST /api/activity` | **Not yours.** The merchant's system posts usage events here. See below. |
+
+**Never post to `/api/activity`.** That endpoint records what a customer did
+inside the merchant's product, and only the merchant's own system knows that.
+Every line of it ends up in front of a bank as a factual claim about a named
+person, so an event you inferred, reconstructed from a conversation, or filled
+in because the packet looked thin is fabricated evidence. If a digital dispute
+is missing its usage history, say the record has no activity log and tell the
+merchant to post their events; do not supply them yourself.
 
 **What you must not call:** `POST /api/disputes/{id}/submit` with
 `submit: true`. Sending evidence to a bank is the merchant's decision, not

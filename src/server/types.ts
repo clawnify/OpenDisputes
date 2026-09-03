@@ -80,6 +80,8 @@ export interface Dispute {
   charge_ref: string;
   issuer_country: string;
   due_by: string | null;
+  /** When the customer paid. Null when the processor did not give it up. */
+  charged_at: string | null;
   opened_at: string;
   recommendation: "pending" | "fight" | "do_not_fight" | "accept";
   recommendation_reason: string;
@@ -120,4 +122,24 @@ export function isReason(v: string): v is Reason {
 export function normalizeReason(raw: string): Reason {
   const v = (raw || "").toLowerCase().trim();
   return isReason(v) ? v : "general";
+}
+
+/**
+ * One thing the customer did in the product, as their own system reported it.
+ * Keyed by customer rather than by dispute: see activity.ts.
+ */
+export interface CustomerActivity {
+  id: string;
+  external_id: string;
+  customer_email: string;
+  customer_ref: string;
+  charge_ref: string;
+  event_type: string;
+  occurred_at: string;
+  detail: string;
+  artifact_url: string;
+  artifact_label: string;
+  ip: string;
+  metadata: string;
+  created_at: string;
 }

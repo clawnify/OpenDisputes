@@ -177,7 +177,7 @@ const DISPUTE_FIELDS = `
   evidenceDueBy
   initiatedAt
   type
-  order { id name email shippingAddress { address1 address2 city zip province country } }
+  order { id name email processedAt createdAt shippingAddress { address1 address2 city zip province country } }
 `;
 
 export async function listDisputes(env: ShopifyEnv, first = 50, after?: string) {

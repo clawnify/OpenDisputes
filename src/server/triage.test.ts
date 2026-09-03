@@ -7,7 +7,8 @@ function dispute(over: Partial<Dispute> = {}): Dispute {
     id: "d1", processor: "stripe", external_id: "du_1", reason: "product_not_received",
     status: "needs_response", amount_cents: 12_000, currency: "usd", is_physical: 1,
     customer_email: "a@b.com", customer_name: "A B", order_ref: "#1001", charge_ref: "ch_1",
-    issuer_country: "US", due_by: null, opened_at: "2026-09-01", recommendation: "pending",
+    issuer_country: "US", due_by: null, opened_at: "2026-09-01", charged_at: null,
+    recommendation: "pending",
     recommendation_reason: "", outcome: null, outcome_at: null, raw: "{}",
     created_at: "", updated_at: "", ...over,
   };

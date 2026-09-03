@@ -49,6 +49,13 @@ create table if not exists disputes (
   due_by            text,
   opened_at         text not null,
 
+  -- When the customer actually paid. Distinct from `opened_at`, and the only
+  -- boundary that supports the sentence an issuer cares about: "they used it
+  -- AFTER paying for it". Nullable because not every processor hands it over,
+  -- and a summary built without it must say which boundary it could prove
+  -- rather than quietly substituting the dispute date. See activity.ts.
+  charged_at        text,
+
   -- Triage verdict — see triage.ts. Written on intake and refreshed whenever
   -- evidence lands, because a dispute that was unwinnable at 09:00 becomes
   -- winnable the moment a signed POD arrives.
@@ -184,6 +191,68 @@ create table if not exists carrier_lookups (
 );
 
 create index if not exists idx_carrier_dispute on carrier_lookups (dispute_id, created_at);
+
+-- What the customer actually did in the product.
+--
+-- Keyed by CUSTOMER, not by dispute, and that is the whole point. Every other
+-- evidence route in this app is dispute-scoped and therefore after-the-fact,
+-- but the winning argument for a digital product is a usage history that
+-- already existed before anyone disputed anything. A merchant cannot
+-- retroactively prove their customer logged in for six months; they can only
+-- have been recording it. So this table is written continuously by the
+-- merchant's own system and joined in at assembly time.
+--
+-- Deliberately NOT an analytics store. There are no aggregates, no sessions and
+-- no funnel: the only questions asked of it are "did this person use the thing,
+-- when, and what did they get out of it", because those are the only questions
+-- an issuer weighs.
+create table if not exists customer_activity (
+  id             text primary key,
+
+  -- The merchant's own id for this event, when they have one. Empty string
+  -- means "no id"; the partial unique index below keys off that.
+  external_id    text not null default '',
+
+  -- Email is the join that actually works. Stripe gives it on the charge's
+  -- billing details, Shopify on the order, so it is the one identifier present
+  -- on both sides without the merchant mapping anything. Stored lowercased.
+  customer_email text not null,
+
+  -- Stronger keys when the merchant has them. `customer_ref` is their own user
+  -- id; `charge_ref` ties an event to one payment when they know which.
+  customer_ref   text not null default '',
+  charge_ref     text not null default '',
+
+  -- The merchant's own vocabulary, on purpose. Every product has different
+  -- verbs ('render', 'export', 'lesson_completed') and an enum here would
+  -- force a lie. `signup` is the one conventional value the summary looks for.
+  event_type     text not null,
+
+  -- Load-bearing column: every claim this evidence makes is a comparison
+  -- between this and `disputes.charged_at`. ISO 8601.
+  occurred_at    text not null,
+
+  detail         text not null default '',
+
+  -- Something the customer received or produced. An issuer weighs "here is the
+  -- work they took delivery of" far above "our logs say they were active".
+  artifact_url   text not null default '',
+  artifact_label text not null default '',
+
+  ip             text not null default '',
+  metadata       text not null default '{}',
+  created_at     text not null default (datetime('now'))
+);
+
+create index if not exists idx_activity_customer
+  on customer_activity (customer_email, occurred_at);
+
+-- Idempotent re-push, but only for merchants who supply their own event id.
+-- Partial so that events without one still append: two renders in the same
+-- second are two real events, and a blanket unique key would silently drop the
+-- second one.
+create unique index if not exists idx_activity_external
+  on customer_activity (customer_email, external_id) where external_id != '';
 
 -- Single-row settings. Policy text lives here because it is merchant-specific
 -- prose that belongs in every submission and nobody wants to retype it.

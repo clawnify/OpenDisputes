@@ -4,6 +4,7 @@ import {
   addEvidence, buildRebuttal, gatherCarrierEvidence, loadDossier, refreshTriage, settings,
   type DossierEnv,
 } from "./dossier.js";
+import { attachActivityEvidence, ingestActivity } from "./activity.js";
 import { shouldAutoSubmit } from "./triage.js";
 import { dossierHTML, renderDossier } from "./render.js";
 import { dispatchTask, listAgentServers, shopifySubmitBrief } from "./agent.js";
@@ -646,6 +647,58 @@ app.openapi(
 
 app.openapi(
   createRoute({
+    method: "post", path: "/api/activity",
+    summary: "Record what a customer did in the product",
+    description:
+      "Post events as they happen, keyed by customer email. This is the one piece of evidence a merchant cannot assemble after a dispute arrives: a usage history only exists if it was already being recorded. When a dispute lands, the events for that customer are summarized into the packet automatically. Partial success is intentional — a bad row is reported by index rather than failing the batch, so a back-fill does not silently lose a window.",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              events: z.array(
+                z.object({
+                  customer_email: z.string().min(1),
+                  event_type: z.string().min(1).describe("Your own verb: signup, login, render, export…"),
+                  occurred_at: z.string().describe("ISO 8601. Every claim made from this is a date comparison against the payment date."),
+                  external_id: z.string().optional().describe("Your id for this event. Supply it and re-pushing is a no-op."),
+                  customer_ref: z.string().optional(),
+                  charge_ref: z.string().optional(),
+                  detail: z.string().optional(),
+                  artifact_url: z.string().optional().describe("Something the customer received or produced. Weighed above a bare log line."),
+                  artifact_label: z.string().optional(),
+                  ip: z.string().optional(),
+                  metadata: z.record(z.unknown()).optional(),
+                }),
+              ).min(1).max(1000),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: "Ingested",
+        content: {
+          "application/json": {
+            schema: z.object({
+              written: z.number(),
+              duplicates: z.number(),
+              rejected: z.array(z.object({ index: z.number(), reason: z.string() })),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  async (c) => {
+    const { events } = c.req.valid("json");
+    return c.json(await ingestActivity(events), 200);
+  },
+);
+
+app.openapi(
+  createRoute({
     method: "get", path: "/api/settings",
     summary: "Merchant policy text and automation posture",
     responses: {
@@ -887,6 +940,12 @@ async function preparePipeline(
     await gatherCarrierEvidence(env, d.dispute, shipments, orderAddress, s.agent_server_id);
   }
 
+  // Customer activity, folded in before the rebuttal is built: buildRebuttal
+  // reads the activity_log item to decide whether to make the "used it after
+  // paying" argument, so this has to land first or the packet loses its
+  // strongest line on a digital product.
+  await attachActivityEvidence(disputeId);
+
   // The rebuttal is regenerated from whatever the record now holds, and
   // replaces the previous one rather than accumulating.
   const fresh = await loadDossier(disputeId);
@@ -938,6 +997,9 @@ async function upsertStripeDispute(
   let name = "";
   let country = "";
   let physical = 0;
+  // The payment date, which the activity summary measures "used it after
+  // paying" from. Free of charge here: this charge is already being fetched.
+  let chargedAt: string | null = null;
 
   if (charge && env.STRIPE_API_KEY) {
     const ch = (await stripe.getCharge(env, charge).catch(() => null)) as Record<string, unknown> | null;
@@ -949,6 +1011,9 @@ async function upsertStripeDispute(
       // Physical is derived from the shipping block, never from the reason
       // code — a not-received claim on a digital product is common.
       physical = ch.shipping ? 1 : 0;
+      if (typeof ch.created === "number") {
+        chargedAt = new Date(ch.created * 1000).toISOString();
+      }
     }
   }
 
@@ -958,15 +1023,19 @@ async function upsertStripeDispute(
   await run(
     `insert into disputes
        (id, processor, external_id, reason, status, amount_cents, currency, is_physical,
-        customer_email, customer_name, order_ref, charge_ref, issuer_country, due_by, opened_at, raw)
-     values (?, 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)
+        customer_email, customer_name, order_ref, charge_ref, issuer_country, due_by, opened_at,
+        charged_at, raw)
+     values (?, 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)
      on conflict (processor, external_id) do update set
        status = excluded.status, due_by = excluded.due_by,
+       -- Keep a payment date we already resolved if a later re-read cannot
+       -- reach the charge; losing it silently downgrades the activity claim.
+       charged_at = coalesce(excluded.charged_at, disputes.charged_at),
        raw = excluded.raw, updated_at = datetime('now')`,
     [
       id, externalId, normalizeReason(String(d.reason ?? "general")), String(d.status ?? ""),
       Number(d.amount ?? 0), String(d.currency ?? "usd"), physical, email, name, charge, country,
-      dueBy, new Date(Number(d.created ?? 0) * 1000).toISOString(), JSON.stringify(d),
+      dueBy, new Date(Number(d.created ?? 0) * 1000).toISOString(), chargedAt, JSON.stringify(d),
     ],
   );
   return id;
@@ -981,16 +1050,24 @@ async function upsertShopifyDispute(node: Record<string, unknown>): Promise<stri
   const id = existing?.id ?? crypto.randomUUID();
 
   const amount = (node.amount ?? {}) as { amount?: string; currencyCode?: string };
-  const order = (node.order ?? {}) as { id?: string; name?: string; email?: string };
+  const order = (node.order ?? {}) as {
+    id?: string; name?: string; email?: string; processedAt?: string; createdAt?: string;
+  };
   const reasonDetails = (node.reasonDetails ?? {}) as { reason?: string };
+
+  // `processedAt` is when the order was processed, which is the payment moment;
+  // `createdAt` is checkout completion and stands in when the former is absent.
+  const chargedAt = order.processedAt ?? order.createdAt ?? null;
 
   await run(
     `insert into disputes
        (id, processor, external_id, reason, status, amount_cents, currency, is_physical,
-        customer_email, customer_name, order_ref, charge_ref, issuer_country, due_by, opened_at, raw)
-     values (?, 'shopify', ?, ?, ?, ?, ?, 1, ?, '', ?, '', '', ?, ?, ?)
+        customer_email, customer_name, order_ref, charge_ref, issuer_country, due_by, opened_at,
+        charged_at, raw)
+     values (?, 'shopify', ?, ?, ?, ?, ?, 1, ?, '', ?, '', '', ?, ?, ?, ?)
      on conflict (processor, external_id) do update set
        status = excluded.status, due_by = excluded.due_by,
+       charged_at = coalesce(excluded.charged_at, disputes.charged_at),
        raw = excluded.raw, updated_at = datetime('now')`,
     [
       id, externalId,
@@ -1002,6 +1079,7 @@ async function upsertShopifyDispute(node: Record<string, unknown>): Promise<stri
       order.id ?? "",
       node.evidenceDueBy ? String(node.evidenceDueBy) : null,
       String(node.initiatedAt ?? new Date().toISOString()),
+      chargedAt,
       JSON.stringify(node),
     ],
   );
