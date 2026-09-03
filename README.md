@@ -13,9 +13,10 @@ Chargeback evidence for Stripe and Shopify, assembled from your own records.
 
 An open-source app template provided by [Clawnify.com](https://clawnify.com).
 
-Most chargeback tools take a percentage of what they recover for you: 25% to
-30% of your own money, uncapped, for evidence assembled out of records you
-already hold. This is that software, except you run it and keep the recovery.
+Most chargeback tools take a percentage of what they recover for you.
+Chargeflow charges 25% of each recovered chargeback; Disputifier 20%, capped at
+$250. That is the going rate for evidence assembled out of records you already
+hold. This is that software, except you run it and keep the recovery.
 
 ## What it does
 
@@ -47,7 +48,7 @@ dispute afterwards and compares; when they disagree it says so and asks your
 agent to finish the job in the admin, rather than showing you a green tick.
 
 **Shows you whether any of it works.** Win rate by reason code, by issuer
-country, and — the one nobody sells back to you — whether retrieved proof of
+country, and (the one nobody sells back to you) whether retrieved proof of
 delivery actually changes outcomes on your own traffic. Small samples are shown
 as `1/3`, not as `33%`.
 
@@ -87,7 +88,7 @@ instead, which works and is slower.
 |---|---|---|
 | FedEx | Yes | `FEDEX_CLIENT_ID`, `FEDEX_CLIENT_SECRET`, `FEDEX_ACCOUNT_NUMBER` |
 | UPS | Yes, as a POD letter | `UPS_CLIENT_ID`, `UPS_CLIENT_SECRET` |
-| USPS | No — portal only | — |
+| USPS | No, portal only | — |
 | DHL | Varies by division | — |
 
 UPS terms allow the electronic signature image only as part of a POD letter, so
