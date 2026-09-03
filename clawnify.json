@@ -1,0 +1,62 @@
+{
+  "$schema": "https://app.clawnify.com/schema/v1/clawnify.json",
+  "name": "OpenDisputes",
+  "description": "Chargeback evidence for Stripe and Shopify, assembled from your own records. Pulls the order, the payment and the carrier's proof of delivery into one dossier, tells you which disputes are worth fighting, and stages the packet for your review before it goes to the bank. When a carrier will not serve proof of delivery over its API, your agent signs into the portal and gets it. You own the code and pay no percentage of what you recover.",
+  "app": {
+    "framework": "react+hono",
+    "database": true,
+    "storage": true
+  },
+  "api": {
+    "public_routes": [
+      { "path": "/api/webhooks/stripe", "methods": ["POST"] }
+    ]
+  },
+  "env": {
+    "optional": [
+      "STRIPE_API_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "SHOPIFY_SHOP_DOMAIN",
+      "SHOPIFY_ADMIN_TOKEN",
+      "FEDEX_CLIENT_ID",
+      "FEDEX_CLIENT_SECRET",
+      "FEDEX_ACCOUNT_NUMBER",
+      "UPS_CLIENT_ID",
+      "UPS_CLIENT_SECRET",
+      "MERCHANT_NAME"
+    ]
+  },
+  "deploy": {
+    "title": "Fight chargebacks with your own evidence",
+    "subtitle": "Stripe and Shopify disputes, scored and packaged, with carrier proof of delivery pulled in automatically.",
+    "prompts": [
+      {
+        "id": "merchant_name",
+        "label": "What name should appear on evidence sent to banks?",
+        "placeholder": "Acme Supply Co."
+      },
+      {
+        "id": "product_description",
+        "label": "What do you sell? One or two sentences an issuer can understand without context.",
+        "placeholder": "Handmade leather goods, shipped worldwide from Portugal."
+      },
+      {
+        "id": "refund_policy",
+        "label": "Your refund policy, as the customer sees it at checkout",
+        "placeholder": "30-day returns on unused items. Shown at checkout and at /legal."
+      },
+      {
+        "id": "cancellation_policy",
+        "label": "Your cancellation policy, if you bill on a subscription",
+        "placeholder": "Cancel anytime from the dashboard; access runs to the end of the period."
+      }
+    ]
+  },
+  "template": {
+    "displayName": "OpenDisputes",
+    "category": "Finance",
+    "image": "screenshot.jpg",
+    "enabled": true
+  },
+  "agent": "agent.md"
+}

@@ -1,0 +1,27 @@
+# Payment processors — connect either or both.
+# Stripe: a restricted key with read on charges/invoices/customers, and write on
+# disputes and files.
+STRIPE_API_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+# Shopify: a custom app token with read_orders, read_fulfillments,
+# read_shopify_payments_disputes and write_shopify_payments_dispute_evidences.
+SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
+SHOPIFY_ADMIN_TOKEN=
+
+# Carriers — optional. Without these the agent retrieves proof of delivery from
+# the carrier portal instead, which works but is slower.
+# FedEx signature POD needs the shipper's OWN billing account number; if you
+# fulfil through a 3PL you will not have one, and that is the normal case.
+FEDEX_CLIENT_ID=
+FEDEX_CLIENT_SECRET=
+FEDEX_ACCOUNT_NUMBER=
+UPS_CLIENT_ID=
+UPS_CLIENT_SECRET=
+
+# Shown on evidence sent to banks.
+MERCHANT_NAME=
+
+# Injected automatically on Clawnify. Set it locally to render dossier PDFs and
+# reach your agent; without it the dossier still opens as HTML.
+CLAWNIFY_TOKEN=
