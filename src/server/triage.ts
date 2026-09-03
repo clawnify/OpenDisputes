@@ -1,21 +1,22 @@
 // Should this dispute be fought at all?
 //
-// A correction worth stating, because the intuitive answer is wrong. On Stripe
-// the dispute fee is charged when the dispute opens and refunded only on a win.
-// Accepting therefore costs the same as fighting and losing: amount + fee.
-// Fighting is never financially worse than accepting, so "the amount is too
-// small to bother" is not, by itself, a reason to concede.
+// There are two fees, not one, and conflating them gets the answer backwards.
+// Per Stripe's own documentation: a dispute fee is charged when the dispute is
+// raised and is never returned, win or lose. If you then contest it, a SECOND
+// fee applies, and that one is returned only if you win.
 //
-// What IS a reason to concede is evidence pointing the other way, and that is
-// what this module looks for. Three of these come straight from merchants who
+// So the received fee is sunk the moment the dispute exists and is irrelevant
+// to this decision. The counter fee is not: it is spent only by choosing to
+// fight, and lost if the fight fails. Contesting a dispute smaller than that
+// fee therefore cannot pay for itself even at a decent win rate, which is why
+// `counterFeeCents` defaults to a real number rather than zero.
+//
+// The larger reason to concede is evidence pointing the other way, and that is
+// most of what this module looks for. Three of those come from merchants who
 // learned them expensively: a not-received claim with no delivery record, a POD
 // whose address does not match the order, and a subscription that kept billing
 // after a cancellation request. Submitting those wastes the merchant's
 // credibility with an issuer they will face again.
-//
-// The one economic lever left is `counterFeeCents`: some processors charge to
-// submit a response. Where that is real, a small dispute genuinely can be -EV,
-// so it is a configured number rather than a hardcoded assumption.
 
 import type { Dispute, EvidenceItem, Reason } from "./types.js";
 
@@ -30,7 +31,12 @@ export interface TriageInput {
   dispute: Dispute;
   items: EvidenceItem[];
   carrier: CarrierSignal[];
-  /** Per-submission fee the processor charges, if any. 0 for Stripe today. */
+  /**
+   * Fee charged for contesting, refunded only on a win. Overridable because it
+   * varies by processor, contract and country: Stripe does not apply it in
+   * Mexico or Japan, and negotiated contracts differ. Callers that genuinely
+   * pay nothing to counter pass 0 explicitly.
+   */
   counterFeeCents?: number;
 }
 
@@ -42,6 +48,13 @@ export interface Triage {
   /** Ordered, so the UI can show the merchant what is missing, strongest first. */
   gaps: string[];
 }
+
+/**
+ * Default cost of contesting. Stripe publishes this as the "dispute countered
+ * fee"; the figure is contract- and country-dependent, so this is a floor a
+ * merchant should override in settings rather than a quoted price.
+ */
+export const DEFAULT_COUNTER_FEE_CENTS = 1_500;
 
 const has = (items: EvidenceItem[], kind: EvidenceItem["kind"]) =>
   items.some((i) => i.kind === kind && i.included);
@@ -115,11 +128,15 @@ export function triage(input: TriageInput): Triage {
 
   // ── Economics, only where a counter actually costs money ──────────
 
-  const fee = input.counterFeeCents ?? 0;
+  // Deliberately compared against the amount alone. The received fee is already
+  // spent and comes back in no scenario, so folding it in here would make
+  // fighting look better than it is by crediting the merchant with money they
+  // have lost either way.
+  const fee = input.counterFeeCents ?? DEFAULT_COUNTER_FEE_CENTS;
   if (fee > 0 && dispute.amount_cents <= fee) {
     return {
       recommendation: "do_not_fight",
-      reason: `The disputed amount (${money(dispute.amount_cents, dispute.currency)}) does not exceed the ${money(fee, dispute.currency)} response fee, so winning does not repay the attempt.`,
+      reason: `Contesting costs ${money(fee, dispute.currency)} and the disputed amount is ${money(dispute.amount_cents, dispute.currency)}, so winning does not repay the attempt. Conceding is the cheaper outcome even when you are in the right.`,
       gaps,
     };
   }

@@ -34,8 +34,13 @@ export const STRIPE_FILE_FIELDS: ReadonlySet<string> = new Set([
 /** Stripe caps the combined character count of the evidence hash. */
 export const STRIPE_EVIDENCE_CHAR_LIMIT = 150_000;
 
-/** Stripe rejects dispute-evidence uploads above 5MB. */
-export const STRIPE_FILE_BYTE_LIMIT = 5 * 1024 * 1024;
+/**
+ * Stripe caps the COMBINED size of a submission's evidence files, not each one.
+ * Checking per file is therefore necessary but not sufficient: three 2MB
+ * attachments each pass and the packet still fails. The per-file guard stays
+ * because it catches the common case early with a message naming the file.
+ */
+export const STRIPE_EVIDENCE_BYTE_LIMIT = Math.floor(4.5 * 1024 * 1024);
 
 export interface StripeEnv {
   STRIPE_API_KEY?: string;
@@ -244,9 +249,9 @@ export async function uploadFile(
   file: { data: Uint8Array; filename: string; mime: string },
 ): Promise<string> {
   if (!env.STRIPE_API_KEY) throw new StripeError("STRIPE_API_KEY is not set");
-  if (file.data.byteLength > STRIPE_FILE_BYTE_LIMIT) {
+  if (file.data.byteLength > STRIPE_EVIDENCE_BYTE_LIMIT) {
     throw new StripeError(
-      `${file.filename} is ${(file.data.byteLength / 1024 / 1024).toFixed(1)}MB; Stripe caps dispute evidence at 5MB`,
+      `${file.filename} is ${(file.data.byteLength / 1024 / 1024).toFixed(1)}MB; Stripe caps a submission's combined evidence at 4.5MB`,
     );
   }
   const form = new FormData();
