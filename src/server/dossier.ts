@@ -13,6 +13,9 @@ import type { CarrierEnv } from "./carriers/types.js";
 import { carrierPODBrief, dispatchTask, type AgentEnv } from "./agent.js";
 import type { Dispute, EvidenceItem, EvidenceKind, EvidenceSource, Settings } from "./types.js";
 
+/** A merchant's decided record on one reason code, as triage reads it. */
+type TriageHistory = { decided: number; won: number };
+
 export interface DossierEnv extends CarrierEnv, AgentEnv {
   APP_URL?: string;
   /** R2 bucket the platform binds when `app.storage` is set in clawnify.json. */
@@ -92,27 +95,120 @@ export async function refreshTriage(disputeId: string): Promise<void> {
   const d = await loadDossier(disputeId);
   if (!d) return;
   const s = await settings();
+  const history = await winRateByReason(d.dispute.reason);
+  await persistVerdict(d, s, history);
+}
 
-  // The merchant's own record on this reason code. Open disputes are excluded
-  // by the outcome filter, so the dispute being scored never votes on itself.
-  const history = await get<{ decided: number; won: number }>(
-    `select count(*) as decided,
+/**
+ * The merchant's decided record per reason code.
+ *
+ * Open disputes are excluded by the outcome filter, so a dispute being scored
+ * never votes on itself. One row per reason so the bulk path can load the whole
+ * table in a single query instead of once per dispute.
+ */
+async function winRateHistory(reason?: string): Promise<Map<string, TriageHistory>> {
+  const rows = await query<{ reason: string; decided: number; won: number }>(
+    `select reason,
+            count(*) as decided,
             sum(case when outcome = 'won' then 1 else 0 end) as won
-       from disputes where reason = ? and outcome in ('won', 'lost')`,
-    [d.dispute.reason],
+       from disputes
+      where outcome in ('won', 'lost') ${reason ? "and reason = ?" : ""}
+      group by reason`,
+    reason ? [reason] : [],
   );
+  return new Map(
+    rows.map((r) => [r.reason, { decided: Number(r.decided), won: Number(r.won ?? 0) }]),
+  );
+}
 
+async function winRateByReason(reason: string): Promise<TriageHistory | undefined> {
+  return (await winRateHistory(reason)).get(reason);
+}
+
+/** Score one dossier and write the verdict. The ONLY place a verdict is made. */
+async function persistVerdict(
+  d: Dossier,
+  s: Settings,
+  history: TriageHistory | undefined,
+): Promise<void> {
   const t = triage({
     ...d,
     // Null in settings means "not told", and undefined is how triage reads
     // that. Coercing it to 0 here would restore the bug this replaced.
     counterFeeCents: s.counter_fee_cents ?? undefined,
-    history: history ? { decided: Number(history.decided), won: Number(history.won ?? 0) } : undefined,
+    history,
   });
   await run(
     "update disputes set recommendation = ?, recommendation_reason = ?, updated_at = datetime('now') where id = ?",
-    [t.recommendation, [t.reason, ...t.gaps.map((g) => `Missing: ${g}`)].join("\n"), disputeId],
+    [t.recommendation, [t.reason, ...t.gaps.map((g) => `Missing: ${g}`)].join("\n"), d.dispute.id],
   );
+}
+
+/**
+ * Re-score every open dispute, for a settings change that moves the verdict.
+ *
+ * Bulk because the per-dispute path costs six D1 round trips and D1 calls count
+ * against the Worker's 10,000-subrequest budget, which put the naive loop's
+ * ceiling at ~1,666 open disputes. That is not a hypothetical: a merchant doing
+ * 100k orders a month at a 0.5% dispute rate carries ~1,500 open at once, since
+ * a dispute stays open until the bank rules and that takes up to three months.
+ * Worse than the ceiling was the shape of the failure — the loop died partway,
+ * leaving some disputes scored on the new fee and some on the old, with nothing
+ * recording which.
+ *
+ * So the reads are hoisted out: three joins over the open set plus settings and
+ * the history table, regardless of how many disputes there are. The joins carry
+ * no bound parameters on purpose, which sidesteps D1's ~100-parameter limit
+ * without chunking the reads.
+ *
+ * shortcut: the WRITES are still one statement per dispute, so the ceiling is
+ * now ~10,000 open disputes rather than unbounded. Collapse them into chunked
+ * CASE updates if a merchant ever approaches that.
+ */
+export async function rescoreOpenDisputes(): Promise<number> {
+  const open = await query<Dispute>("select * from disputes where outcome is null");
+  if (!open.length) return 0;
+
+  const s = await settings();
+  const history = await winRateHistory();
+
+  // No bound params: join against the open set rather than listing its ids.
+  const items = await query<EvidenceItem>(
+    `select e.* from evidence_items e
+       join disputes d on d.id = e.dispute_id
+      where d.outcome is null order by e.collected_at asc`,
+  );
+  const carrier = await query<CarrierSignal & { dispute_id: string }>(
+    `select c.dispute_id, c.outcome, c.address_match, c.delivered_at, c.detail
+       from carrier_lookups c
+       join disputes d on d.id = c.dispute_id
+      where d.outcome is null order by c.created_at asc`,
+  );
+
+  const byDispute = <T extends { dispute_id: string }>(rows: T[]): Map<string, T[]> => {
+    const m = new Map<string, T[]>();
+    for (const r of rows) {
+      const list = m.get(r.dispute_id);
+      if (list) list.push(r);
+      else m.set(r.dispute_id, [r]);
+    }
+    return m;
+  };
+  const itemsBy = byDispute(items);
+  const carrierBy = byDispute(carrier);
+
+  for (const dispute of open) {
+    await persistVerdict(
+      {
+        dispute,
+        items: itemsBy.get(dispute.id) ?? [],
+        carrier: carrierBy.get(dispute.id) ?? [],
+      },
+      s,
+      history.get(dispute.reason),
+    );
+  }
+  return open.length;
 }
 
 /**

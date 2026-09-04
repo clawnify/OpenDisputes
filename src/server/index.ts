@@ -1,7 +1,8 @@
 import { caller, createApp, createRoute, user, z } from "@clawnify/app";
 import { get, query, run } from "./db.js";
 import {
-  addEvidence, buildRebuttal, gatherCarrierEvidence, loadDossier, refreshTriage, settings,
+  addEvidence, buildRebuttal, gatherCarrierEvidence, loadDossier, refreshTriage,
+  rescoreOpenDisputes, settings,
   type DossierEnv,
 } from "./dossier.js";
 import { attachActivityEvidence, ingestActivity } from "./activity.js";
@@ -1053,10 +1054,7 @@ app.openapi(
     // The fee is an input to every open verdict, not just to future ones. A
     // merchant who sets it and still sees yesterday's recommendations has been
     // told the setting did nothing.
-    if (b.counter_fee_cents !== undefined) {
-      const open = await query<{ id: string }>("select id from disputes where outcome is null");
-      for (const d of open) await refreshTriage(d.id);
-    }
+    if (b.counter_fee_cents !== undefined) await rescoreOpenDisputes();
     return c.json({ ok: true }, 200);
   },
 );
