@@ -140,9 +140,15 @@ lands. Do not argue with it in chat without checking `recommendation_reason`.
 | Verdict | What it means |
 |---|---|
 | `fight` | Worth contesting. `recommendation_reason` lists what is still missing. |
-| `do_not_fight` | Winnable in principle, not with what is on file. The gaps say what would change it. |
+| `do_not_fight` | One of two things, and `recommendation_reason` says which. Either it is winnable in principle but not with what is on file, and the gaps say what would change it. Or the merchant's own win rate on this reason code is below the rate that repays the response fee, in which case the evidence is fine and the arithmetic is not. |
 | `accept` | The evidence argues for the cardholder. Delivery to the wrong address, no delivery record at all, or billing that continued after a cancellation. |
 | `pending` | Not scored yet — nothing has been gathered. |
 
 An `accept` is not a failure to find evidence. It is a finding, and telling the
 merchant plainly saves them a submission that would have lost.
+
+A `do_not_fight` reached on economics is different, and worth saying out loud
+when you report it: nothing is wrong with the packet. Submitting it is a bet the
+merchant is entitled to take, and there are good reasons to take it anyway, such
+as wanting an issuer to see that this reason code is contested. Do not present
+it as a case that cannot be won.

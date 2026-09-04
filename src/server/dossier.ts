@@ -88,10 +88,27 @@ export async function addEvidence(
  * the moment a signed POD arrives, and a merchant who saw the first verdict
  * must see the second.
  */
-export async function refreshTriage(disputeId: string, counterFeeCents = 0): Promise<void> {
+export async function refreshTriage(disputeId: string): Promise<void> {
   const d = await loadDossier(disputeId);
   if (!d) return;
-  const t = triage({ ...d, counterFeeCents });
+  const s = await settings();
+
+  // The merchant's own record on this reason code. Open disputes are excluded
+  // by the outcome filter, so the dispute being scored never votes on itself.
+  const history = await get<{ decided: number; won: number }>(
+    `select count(*) as decided,
+            sum(case when outcome = 'won' then 1 else 0 end) as won
+       from disputes where reason = ? and outcome in ('won', 'lost')`,
+    [d.dispute.reason],
+  );
+
+  const t = triage({
+    ...d,
+    // Null in settings means "not told", and undefined is how triage reads
+    // that. Coercing it to 0 here would restore the bug this replaced.
+    counterFeeCents: s.counter_fee_cents ?? undefined,
+    history: history ? { decided: Number(history.decided), won: Number(history.won ?? 0) } : undefined,
+  });
   await run(
     "update disputes set recommendation = ?, recommendation_reason = ?, updated_at = datetime('now') where id = ?",
     [t.recommendation, [t.reason, ...t.gaps.map((g) => `Missing: ${g}`)].join("\n"), disputeId],

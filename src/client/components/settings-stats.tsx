@@ -23,6 +23,12 @@ export function SettingsPanel() {
         cancellation_policy_text: r.settings.cancellation_policy_text ?? "",
         product_description_text: r.settings.product_description_text ?? "",
         policy_url: r.settings.policy_url ?? "",
+        // Held as a string in major units because that is how a merchant reads
+        // their own fee schedule. Empty stays empty: it round-trips to null,
+        // which means "not told", not "free".
+        counter_fee: r.settings.counter_fee_cents === null || r.settings.counter_fee_cents === undefined
+          ? ""
+          : String(Number(r.settings.counter_fee_cents) / 100),
       });
     });
   }, []);
@@ -118,6 +124,31 @@ export function SettingsPanel() {
           </div>
         </Zone>
 
+        <Zone label="Response fee">
+          <p className="mb-3 text-[0.8125rem] text-muted">
+            What your processor charges to submit a response, returned only if you win. Stripe
+            charges this on disputes opened after 17 June 2025: 15 USD in the US, Canada and
+            Singapore, 20 EUR across most of Europe, 25 AUD in Australia, and nothing in Mexico
+            or Japan. It decides whether a small dispute is worth countering, so leaving it blank
+            makes this app say the number is missing rather than assume the counter is free.
+          </p>
+          <label className="block max-w-[16rem]">
+            <span className="text-xs font-semibold tracking-wide text-muted">
+              Fee per response
+            </span>
+            <input
+              inputMode="decimal"
+              value={String(form.counter_fee ?? "")}
+              onChange={(e) => setForm({ ...form, counter_fee: e.target.value })}
+              placeholder="Leave blank if you do not know"
+              className="mt-1.5 h-9 w-full rounded-sm border border-border bg-surface px-2.5 text-[0.8125rem] focus:border-ring focus:outline-none"
+            />
+            <span className="mt-1.5 block text-xs text-muted">
+              In your settlement currency. Enter 0 if your processor charges nothing.
+            </span>
+          </label>
+        </Zone>
+
         <Zone label="Automation">
           <label className="flex items-start gap-2">
             <input
@@ -173,7 +204,17 @@ export function SettingsPanel() {
             <Button
               variant="primary"
               onClick={async () => {
-                await api.saveSettings(form);
+                const raw = String(form.counter_fee ?? "").trim();
+                const parsed = raw === "" ? null : Math.round(Number(raw) * 100);
+                const { counter_fee: _omit, ...rest } = form;
+                await api.saveSettings({
+                  ...rest,
+                  // A number that will not parse is not a zero fee. Sending
+                  // nothing leaves the stored value alone.
+                  ...(parsed !== null && !Number.isFinite(parsed)
+                    ? {}
+                    : { counter_fee_cents: parsed }),
+                });
                 setSaved(true);
                 setTimeout(() => setSaved(false), 2500);
               }}

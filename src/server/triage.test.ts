@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shouldAutoSubmit, triage, type CarrierSignal } from "./triage.js";
+import {
+  MIN_DECIDED_FOR_ECONOMICS, breakEvenWinRate, shouldAutoSubmit, triage,
+  type CarrierSignal,
+} from "./triage.js";
 import type { Dispute, EvidenceItem, EvidenceKind } from "./types.js";
 
 function dispute(over: Partial<Dispute> = {}): Dispute {
@@ -106,21 +109,99 @@ describe("triage — weak fraud claims", () => {
 });
 
 describe("triage — economics", () => {
-  it("ignores amount when the processor charges nothing to respond", () => {
-    // The correction that matters: with no counter fee, accepting and losing
-    // cost the same, so a small dispute is still worth contesting.
-    const t = triage({ dispute: dispute({ amount_cents: 300 }), items: [], carrier: [pod()] });
+  const strong = () => ({ items: [] as EvidenceItem[], carrier: [pod()] });
+
+  it("does not concede on the amount alone when the counter is free", () => {
+    // Mexico, Japan, or a Smart Disputes response: nothing is at stake on the
+    // losing branch, so no dispute is too small to contest.
+    const t = triage({
+      dispute: dispute({ amount_cents: 300 }), ...strong(),
+      counterFeeCents: 0, history: { decided: 50, won: 0 },
+    });
+    expect(t.recommendation).toBe("fight");
+    expect(t.breakEvenWinRate).toBe(0);
+  });
+
+  it("still contests a dispute smaller than the fee when the win rate carries it", () => {
+    // The rule this replaced conceded here outright, reasoning that winning
+    // could not repay the attempt. A win RETURNS the fee, so it always repays:
+    // 10 USD against a 15 USD fee breaks even at 60%, and 70% clears it.
+    const t = triage({
+      dispute: dispute({ amount_cents: 1_000 }), ...strong(),
+      counterFeeCents: 1_500, history: { decided: 100, won: 70 },
+    });
+    expect(t.recommendation).toBe("fight");
+    expect(t.breakEvenWinRate).toBeCloseTo(0.6, 5);
+  });
+
+  it("concedes when the merchant's own record is below break-even", () => {
+    // Same 10 USD dispute and 15 USD fee, break-even 60%, measured 20%.
+    const t = triage({
+      dispute: dispute({ amount_cents: 1_000 }), ...strong(),
+      counterFeeCents: 1_500, history: { decided: 100, won: 20 },
+    });
+    expect(t.recommendation).toBe("do_not_fight");
+    expect(t.reason).toMatch(/60%/);
+    expect(t.reason).toMatch(/20 of 100/);
+  });
+
+  it("will not concede on a sample too small to mean anything", () => {
+    // Nine losses out of nine is 0%, far below break-even, and still not enough
+    // to price a decision on. MIN_DECIDED_FOR_ECONOMICS is the whole guard.
+    const t = triage({
+      dispute: dispute({ amount_cents: 1_000 }), ...strong(),
+      counterFeeCents: 1_500,
+      history: { decided: MIN_DECIDED_FOR_ECONOMICS - 1, won: 0 },
+    });
     expect(t.recommendation).toBe("fight");
   });
 
-  it("declines only when a real counter fee exceeds the amount", () => {
+  it("treats an unknown fee as unknown, never as free", () => {
+    // The bug this replaced: counterFeeCents was never supplied in production
+    // and defaulted to 0, so every dispute was priced as if countering cost
+    // nothing. Absent now means absent, and it is reported as a gap.
     const t = triage({
-      dispute: dispute({ amount_cents: 1_500 }),
-      items: [],
-      carrier: [pod()],
-      counterFeeCents: 2_000,
+      dispute: dispute({ amount_cents: 1_000 }), ...strong(),
+      history: { decided: 100, won: 0 },
     });
-    expect(t.recommendation).toBe("do_not_fight");
+    expect(t.recommendation).toBe("fight");
+    expect(t.breakEvenWinRate).toBeNull();
+    expect(t.gaps.join(" ")).toMatch(/what your processor charges/i);
+  });
+
+  it("keeps a configuration prompt below missing evidence in the gap order", () => {
+    // gaps is read strongest-first. A settings prompt must never displace a
+    // missing proof of delivery at the top of that list.
+    const t = triage({ dispute: dispute(), items: [], carrier: [] });
+    expect(t.gaps[0]).toMatch(/proof of delivery/i);
+    expect(t.gaps[t.gaps.length - 1]).toMatch(/what your processor charges/i);
+  });
+
+  it("does not price a dispute the evidence already concedes", () => {
+    // A break-even on a case you cannot win is not a decision, so the economic
+    // path is never reached and the threshold stays null.
+    const t = triage({
+      dispute: dispute({ reason: "product_not_received" }),
+      items: [],
+      carrier: [{ outcome: "not_delivered", address_match: null, delivered_at: null, detail: "" }],
+      counterFeeCents: 1_500,
+      history: { decided: 100, won: 99 },
+    });
+    expect(t.recommendation).toBe("accept");
+    expect(t.breakEvenWinRate).toBeNull();
+  });
+});
+
+describe("breakEvenWinRate", () => {
+  it("is the fee's share of what is at stake", () => {
+    // p*(A) = F / (A + F): the fee is risked to recover the amount.
+    expect(breakEvenWinRate(1_000, 1_500)).toBeCloseTo(0.6, 5);
+    expect(breakEvenWinRate(50_000, 1_500)).toBeCloseTo(0.0291, 3);
+    expect(breakEvenWinRate(1_000, 0)).toBe(0);
+  });
+
+  it("has no answer for a dispute with nothing at stake", () => {
+    expect(breakEvenWinRate(0, 0)).toBeNull();
   });
 });
 

@@ -1021,6 +1021,10 @@ app.openapi(
               product_description_text: z.string().optional(),
               policy_url: z.string().optional(),
               agent_server_id: z.string().optional(),
+              counter_fee_cents: z.number().int().min(0).nullable().optional().openapi({
+                description:
+                  "What your processor charges to submit a response, in minor units of your settlement currency. Stripe charges this on disputes opened after 2025-06-17 and returns it only if you win (15 USD in the US, Canada and Singapore; 20 EUR across most of Europe; 25 AUD in Australia; nothing in Mexico or Japan). Send null if you do not know: triage reports the number as missing rather than assuming a counter is free.",
+              }),
             }),
           },
         },
@@ -1041,9 +1045,18 @@ app.openapi(
     if (b.product_description_text !== undefined) put("product_description_text", b.product_description_text);
     if (b.policy_url !== undefined) put("policy_url", b.policy_url);
     if (b.agent_server_id !== undefined) put("agent_server_id", b.agent_server_id);
+    if (b.counter_fee_cents !== undefined) put("counter_fee_cents", b.counter_fee_cents);
     if (!sets.length) return c.json({ ok: true }, 200);
 
     await run(`update settings set ${sets.join(", ")}, updated_at = datetime('now') where id = 1`, args);
+
+    // The fee is an input to every open verdict, not just to future ones. A
+    // merchant who sets it and still sees yesterday's recommendations has been
+    // told the setting did nothing.
+    if (b.counter_fee_cents !== undefined) {
+      const open = await query<{ id: string }>("select id from disputes where outcome is null");
+      for (const d of open) await refreshTriage(d.id);
+    }
     return c.json({ ok: true }, 200);
   },
 );

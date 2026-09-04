@@ -101,6 +101,8 @@ export interface Settings {
   product_description_text: string;
   policy_url: string;
   agent_server_id: string;
+  /** Null means the merchant has not told us. Never read as zero. */
+  counter_fee_cents: number | null;
   updated_at: string;
 }
 

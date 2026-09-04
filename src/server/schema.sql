@@ -275,6 +275,18 @@ create table if not exists settings (
   -- Which agent handles browser escalation, when the org runs more than one.
   agent_server_id       text not null default '',
 
+  -- What the processor charges to SUBMIT a response, in the merchant's own
+  -- currency. Stripe charges this on disputes initiated after 2025-06-17 and
+  -- returns it only on a win, so it is the one fee that changes the decision
+  -- rather than merely the bill. It varies by country (15 USD, 20 EUR, 25 AUD),
+  -- is not charged in Mexico or Japan, and is waived under Smart Disputes.
+  --
+  -- Deliberately NULLABLE with no default. Null means "the merchant has not
+  -- told us", which is NOT the same as zero: assuming a free counter is exactly
+  -- the wrong way to be wrong, so triage says the number is missing instead of
+  -- quietly pricing the decision at nothing.
+  counter_fee_cents     integer,
+
   updated_at            text not null default (datetime('now'))
 );
 

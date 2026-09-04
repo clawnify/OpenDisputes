@@ -58,6 +58,16 @@ does not match the order argues for the cardholder. So does a not-received claim
 with no delivery record, and a subscription that kept billing after a
 cancellation request. The app says so, plainly, instead of packaging a loss.
 
+**And which ones stopped being worth the fee.** Since June 2025 Stripe charges
+to submit a response, returned only if you win, so countering risks that fee to
+recover the amount. That breaks even at a win rate of fee over amount-plus-fee:
+about 3% on a 500 USD dispute, but 60% on a 10 USD one. The app knows your
+measured win rate by reason code, so it can tell you which small disputes your
+own record says to let go. It will not do that arithmetic on a handful of cases,
+and it never assumes the fee is zero because you have not entered it. Note the
+rule that looks right and is not: a dispute smaller than the fee is still worth
+countering, because winning returns the fee.
+
 **Stages by default.** Evidence can be submitted once per dispute and cannot be
 revised. So the app prepares the packet and stops. You review it and press the
 button. Automatic submission is available per reason code, off until you turn it
