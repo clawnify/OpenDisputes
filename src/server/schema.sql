@@ -290,7 +290,9 @@ create table if not exists settings (
   updated_at            text not null default (datetime('now'))
 );
 
-insert or ignore into settings (id) values (1);
+-- The singleton settings row is created by the app (ensureSeeded in
+-- src/server/index.ts): a deploy applies this file as DDL only, so an insert
+-- here fails the whole build.
 
 -- Early fraud warnings: the dispute that has not happened yet.
 --
