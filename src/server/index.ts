@@ -38,6 +38,27 @@ const app = createApp<Env>({
     "Chargeback evidence, assembled from Stripe, Shopify and the carriers, then staged for your review before it goes to the bank.",
 });
 
+// ── First-run row ───────────────────────────────────────────────────
+// The singleton settings row used to be seeded from schema.sql, but a deploy
+// applies that file as DDL only and refuses anything else, so the seed failed
+// the whole build. Every column carries a DDL default, so an id-only insert is
+// the whole row. Without it `select * from settings where id = 1` returns
+// nothing and `update settings … where id = 1` matches nothing and reports
+// success, so saving settings would silently do nothing.
+let seeded = false;
+
+app.use("*", async (_c, next) => {
+  if (!seeded) {
+    try {
+      await run("insert or ignore into settings (id) values (1)");
+      seeded = true;
+    } catch {
+      // A cold database mid-migration: the next request retries.
+    }
+  }
+  await next();
+});
+
 // ── Schemas ─────────────────────────────────────────────────────────
 
 const ErrorSchema = z.object({ error: z.string() }).openapi("Error");
