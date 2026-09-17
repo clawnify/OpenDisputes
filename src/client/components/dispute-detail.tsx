@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { embedded } from "@clawnify/app/client";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft, Check, CircleAlert, FileText, Package, Send, Sparkles, X,
@@ -23,6 +24,8 @@ export function DisputeDetail() {
   const [data, setData] = useState<{ dispute: Dispute; items: EvidenceItem[]; carrier: CarrierLookup[] } | null>(null);
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState<{ tone: "ok" | "warn" | "err"; text: string } | null>(null);
+  // New tabs are blocked inside the dashboard, so the dossier opens in the page.
+  const [dossierOpen, setDossierOpen] = useState(false);
 
   async function load() {
     try {
@@ -180,16 +183,34 @@ export function DisputeDetail() {
             <Zone
               label={`Evidence · ${included.length} of ${items.length} included`}
               action={
-                <a
-                  href={`/api/disputes/${d.id}/dossier.pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[0.8125rem] no-underline"
-                >
-                  <FileText size={14} /> Open dossier
-                </a>
+                embedded ? (
+                  <button
+                    type="button"
+                    onClick={() => setDossierOpen(!dossierOpen)}
+                    aria-expanded={dossierOpen}
+                    className="inline-flex items-center gap-1.5 text-[0.8125rem] text-primary"
+                  >
+                    <FileText size={14} /> {dossierOpen ? "Hide dossier" : "Open dossier"}
+                  </button>
+                ) : (
+                  <a
+                    href={`/api/disputes/${d.id}/dossier.pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[0.8125rem] no-underline"
+                  >
+                    <FileText size={14} /> Open dossier
+                  </a>
+                )
               }
             >
+              {dossierOpen ? (
+                <iframe
+                  title="Evidence dossier"
+                  src={`/api/disputes/${d.id}/dossier.pdf?format=html`}
+                  className="mb-4 h-[32rem] w-full rounded-md border border-border bg-white"
+                />
+              ) : null}
               {items.length === 0 ? (
                 <p className="text-[0.8125rem] text-muted">
                   Nothing gathered yet. Assemble the dossier to collect what the processor and carriers hold.

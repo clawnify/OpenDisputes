@@ -1,4 +1,6 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { AppNav, embedded, reportLocation } from "@clawnify/app/client";
 import { BarChart3, Inbox, Settings as SettingsIcon, ShieldAlert, ShieldCheck } from "lucide-react";
 import { DisputeList } from "./components/dispute-list";
 import { DisputeDetail } from "./components/dispute-detail";
@@ -12,9 +14,40 @@ const NAV = [
   { to: "/settings", label: "Settings", icon: SettingsIcon, end: false },
 ];
 
+// Inside the Clawnify dashboard the sections live in its sidebar instead.
+const HOST_NAV = [{ items: [
+  { id: "disputes", label: "Disputes", icon: "inbox", href: "/", home: true },
+  { id: "warnings", label: "Fraud warnings", icon: "bell", href: "/warnings" },
+  { id: "performance", label: "Performance", icon: "bar-chart-3", href: "/performance" },
+  { id: "settings", label: "Settings", icon: "settings", href: "/settings" },
+] }];
+
+function activeSection(pathname: string): string {
+  const section = pathname.split("/")[1];
+  return section === "warnings" || section === "performance" || section === "settings" ? section : "disputes";
+}
+
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Report every route, including the open dispute, so a reload of the
+  // dashboard reopens the same screen.
+  useEffect(() => {
+    reportLocation(location.pathname + location.search);
+  }, [location.pathname, location.search]);
+
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
+      {embedded ? (
+        <AppNav
+          title="OpenDisputes"
+          icon="inbox"
+          groups={HOST_NAV}
+          active={activeSection(location.pathname)}
+          onNavigate={(item) => navigate(item.href!)}
+        />
+      ) : (
       <aside className="hidden w-[16.25rem] shrink-0 border-r border-border md:block">
         {/* Fixed 56px so this bottom border and the toolbar's form one line. */}
         <div className="flex h-14 items-center gap-2 border-b border-border px-4">
@@ -44,6 +77,7 @@ export default function App() {
           ))}
         </nav>
       </aside>
+      )}
 
       <main className="min-w-0 flex-1">
         <header className="flex h-14 items-center border-b border-border px-6">
