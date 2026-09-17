@@ -9,17 +9,20 @@ importers:
   .:
     dependencies:
       '@clawnify/app':
-        specifier: ^0.1.0
-        version: 0.1.1(@cloudflare/workers-types@5.20260902.1)(@hono/zod-openapi@0.19.10(hono@4.13.5)(zod@3.25.76))(hono@4.13.5)
+        specifier: ^0.2.1
+        version: 0.2.1(@cloudflare/workers-types@5.20260902.1)(@hono/zod-openapi@0.19.10(hono@4.13.5)(zod@3.25.76))(@phosphor-icons/react@2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(hono@4.13.5)(react@19.2.8)
       '@clawnify/connections':
         specifier: ^0.3.0
         version: 0.3.0
       '@clawnify/db':
-        specifier: ^0.4.1
-        version: 0.4.1(@cloudflare/workers-types@5.20260902.1)
+        specifier: ^0.4.2
+        version: 0.4.2(@cloudflare/workers-types@5.20260902.1)
       '@clawnify/queue':
         specifier: ^0.1.0
         version: 0.1.1
+      '@phosphor-icons/react':
+        specifier: ^2.1.10
+        version: 2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tailwindcss/vite':
         specifier: ^4.2.2
         version: 4.3.3(vite@6.4.3(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
@@ -163,17 +166,24 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@clawnify/app@0.1.1':
-    resolution: {integrity: sha512-nPLTb/N2J5V8eui/I79W/ImX+5OYE6rit+7NuAPYp6q05MWV4ZFBDguvl0AfyndbsmPLvpdCMRCW2iJ54HcsaQ==}
+  '@clawnify/app@0.2.1':
+    resolution: {integrity: sha512-t6fx4rnbEAewU3fH/WGKfWhfhZgVbLp1JgnpCR0YSHaE6rYwxEmgHAYlN3q5gSjYutsWmXANFqro3wuyxWZlTA==}
     peerDependencies:
       '@hono/zod-openapi': '>=0.18 <1'
+      '@phosphor-icons/react': '>=2'
       hono: '*'
+      react: '>=18'
+    peerDependenciesMeta:
+      '@phosphor-icons/react':
+        optional: true
+      react:
+        optional: true
 
   '@clawnify/connections@0.3.0':
     resolution: {integrity: sha512-HYhqTirgLP9D7A89ODUetdhpiKIbJnozy4nrtTxWbTdrbejCF4ch3U8PVxnqF4SfijfBEn60axWTSGp8fMtZeQ==}
 
-  '@clawnify/db@0.4.1':
-    resolution: {integrity: sha512-Ck9RGqEElt6P/3S9quxvr2MIg8mZk1n9wFftH3PpGPFnpA6hbk0td67oaioeMRuDCn7vePcJCeyYEkbvNVYy/g==}
+  '@clawnify/db@0.4.2':
+    resolution: {integrity: sha512-s+G/5bDVFx7Na8WVETfl8EhyPcbmgs5LIE1TsM0vGUOAtPihQGlVX1xpfmg5lsMv8+OChKaHsZIMnzpXY8pyAw==}
 
   '@clawnify/integrations@0.2.2':
     resolution: {integrity: sha512-st7m8+zszpskeaj599kepIz8LSX0ASTkJThJ7gNGuOG7Ra9sn3ui+1P9kkKo8opYOXGOnLxYpAX2n8zRKkY26w==}
@@ -752,6 +762,13 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@phosphor-icons/react@2.1.10':
+    resolution: {integrity: sha512-vt8Tvq8GLjheAZZYa+YG/pW7HDbov8El/MANW8pOAz4eGxrwhnbfrQZq0Cp4q8zBEu8NIhHdnr+r8thnfRSNYA==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      react: '>= 16.8'
+      react-dom: '>= 16.8'
 
   '@poppinss/colors@4.1.6':
     resolution: {integrity: sha512-H9xkIdFswbS8n1d6vmRd8+c10t2Qe+rZITbbDHHkQixH5+2x1FDGmi/0K+WgWiqQFKPSlIYB7jlH6Kpfn6Fleg==}
@@ -1988,12 +2005,15 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@clawnify/app@0.1.1(@cloudflare/workers-types@5.20260902.1)(@hono/zod-openapi@0.19.10(hono@4.13.5)(zod@3.25.76))(hono@4.13.5)':
+  '@clawnify/app@0.2.1(@cloudflare/workers-types@5.20260902.1)(@hono/zod-openapi@0.19.10(hono@4.13.5)(zod@3.25.76))(@phosphor-icons/react@2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(hono@4.13.5)(react@19.2.8)':
     dependencies:
-      '@clawnify/db': 0.4.1(@cloudflare/workers-types@5.20260902.1)
+      '@clawnify/db': 0.4.2(@cloudflare/workers-types@5.20260902.1)
       '@clawnify/routes': 0.2.2(@hono/zod-openapi@0.19.10(hono@4.13.5)(zod@3.25.76))(hono@4.13.5)
       '@hono/zod-openapi': 0.19.10(hono@4.13.5)(zod@3.25.76)
       hono: 4.13.5
+    optionalDependencies:
+      '@phosphor-icons/react': 2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
       - '@cloudflare/workers-types'
@@ -2029,7 +2049,7 @@ snapshots:
     dependencies:
       '@clawnify/integrations': 0.2.2
 
-  '@clawnify/db@0.4.1(@cloudflare/workers-types@5.20260902.1)':
+  '@clawnify/db@0.4.2(@cloudflare/workers-types@5.20260902.1)':
     dependencies:
       drizzle-orm: 0.45.2(@cloudflare/workers-types@5.20260902.1)
     transitivePeerDependencies:
@@ -2407,6 +2427,11 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@phosphor-icons/react@2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   '@poppinss/colors@4.1.6':
     dependencies:

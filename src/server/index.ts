@@ -543,8 +543,9 @@ app.get("/api/disputes/:id/dossier.pdf", async (c) => {
   };
 
   // Off-platform there is no PDF service, and an HTML dossier the merchant can
-  // print beats a 500 that hides the content entirely.
-  if (!c.env.CLAWNIFY_TOKEN) {
+  // print beats a 500 that hides the content entirely. `?format=html` asks for
+  // the same document explicitly, for an in-app preview.
+  if (!c.env.CLAWNIFY_TOKEN || c.req.query("format") === "html") {
     return c.html(dossierHTML(input));
   }
   const pdf = await renderDossier(c.env, input);
