@@ -1,6 +1,6 @@
 {
   "$schema": "https://app.clawnify.com/schema/v1/clawnify.json",
-  "name": "OpenDisputes",
+  "name": "Chargebacks",
   "description": "Chargeback evidence for Stripe and Shopify, assembled from your own records. Pulls the order, the payment and the carrier's proof of delivery into one dossier, tells you which disputes are worth fighting, and stages the packet for your review before it goes to the bank. When a carrier will not serve proof of delivery over its API, your agent signs into the portal and gets it. You own the code and pay no percentage of what you recover.",
   "app": {
     "framework": "react+hono",
@@ -53,7 +53,7 @@
     ]
   },
   "template": {
-    "displayName": "OpenDisputes",
+    "displayName": "Chargebacks",
     "category": "Finance",
     "image": "https://raw.githubusercontent.com/clawnify/OpenDisputes/main/readme-banner.png",
     "enabled": true
