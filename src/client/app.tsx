@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { AppNav, embedded, reportLocation } from "@clawnify/app/client";
+import { AppNav, reportLocation } from "@clawnify/app/client";
 import { BarChart3, Inbox, Settings as SettingsIcon, ShieldAlert, ShieldCheck } from "lucide-react";
 import { DisputeList } from "./components/dispute-list";
 import { DisputeDetail } from "./components/dispute-detail";
@@ -39,45 +39,47 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      {embedded ? (
-        <AppNav
-          title="OpenDisputes"
-          icon="inbox"
-          groups={HOST_NAV}
-          active={activeSection(location.pathname)}
-          onNavigate={(item) => navigate(item.href!)}
-        />
-      ) : (
-      <aside className="hidden w-[16.25rem] shrink-0 border-r border-border md:block">
-        {/* Fixed 56px so this bottom border and the toolbar's form one line. */}
-        <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-          <ShieldCheck size={18} className="text-primary" />
-          <span className="text-base font-bold tracking-tight">OpenDisputes</span>
-        </div>
-        <nav className="p-3">
-          <div className="mb-2 px-2">
-            <span className="eyebrow">Workspace</span>
-          </div>
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `mb-0.5 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm no-underline transition-colors ${
-                  isActive
-                    ? "bg-primary/12 font-semibold text-primary"
-                    : "text-foreground hover:bg-sunken"
-                }`
-              }
-            >
-              <Icon size={15} />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      )}
+      {/* One <AppNav>: inside Clawnify the dashboard draws these sections in
+          its sidebar, and anywhere else the app's own sidebar below. */}
+      <AppNav
+        title="OpenDisputes"
+        icon="inbox"
+        groups={HOST_NAV}
+        active={activeSection(location.pathname)}
+        onNavigate={(item) => navigate(item.href!)}
+        standalone={(nav) => (
+          <aside className="hidden w-[16.25rem] shrink-0 flex-col border-r border-border md:flex">
+            {/* Fixed 56px so this bottom border and the toolbar's form one line. */}
+            <div className="flex h-14 items-center gap-2 border-b border-border px-4">
+              <ShieldCheck size={18} className="text-primary" />
+              <span className="text-base font-bold tracking-tight">OpenDisputes</span>
+            </div>
+            <nav className="p-3">
+              <div className="mb-2 px-2">
+                <span className="eyebrow">Workspace</span>
+              </div>
+              {NAV.map(({ to, label, icon: Icon, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) =>
+                    `mb-0.5 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm no-underline transition-colors ${
+                      isActive
+                        ? "bg-primary/12 font-semibold text-primary"
+                        : "text-foreground hover:bg-sunken"
+                    }`
+                  }
+                >
+                  <Icon size={15} />
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
+            {nav.card && <div className="mt-auto px-3 pb-3">{nav.card}</div>}
+          </aside>
+        )}
+      />
 
       <main className="min-w-0 flex-1">
         <header className="flex h-14 items-center border-b border-border px-6">
