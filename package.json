@@ -10,7 +10,7 @@
     "seed": "wrangler d1 execute open-disputes-db --local --file=seed.sql"
   },
   "dependencies": {
-    "@clawnify/app": "^0.4.8",
+    "@clawnify/app": "^0.4.9",
     "@clawnify/connections": "^0.3.0",
     "@clawnify/db": "^0.4.3",
     "@clawnify/queue": "^0.1.0",
